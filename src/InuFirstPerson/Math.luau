@@ -1,7 +1,7 @@
 --!strict
 -- Smoothing and springs that do not depend on the frame rate. Each step is
 -- solved exactly over its length, so a second taken in 30 frames and in 240
--- frames ends in the same place. This module requires nothing, so the desk
+-- frames ends in the same place. This module requires nothing, so the Lune
 -- tests can load it outside Roblox.
 
 local Math = {}

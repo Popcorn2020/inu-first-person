@@ -3,7 +3,7 @@
 -- head bob, strafe lean, hand-held sway, breathing, the landing dip, step
 -- smoothing, the sprint field of view and kicks. Camera feeds it each frame
 -- and puts the result on the Roblox camera. It touches no Instances, so the
--- desk tests can run it at any frame rate outside Roblox.
+-- Lune tests can run it at any frame rate outside Roblox.
 
 local Config = require(script.Parent.Config)
 local Math = require(script.Parent.Math)
@@ -16,9 +16,6 @@ local BOB_STOPPED_SCALE = 1e-3
 -- The noise time wraps at this period to keep math.noise precise. The jump at
 -- the wrap is far below what the eye can see at the sway's sizes.
 local NOISE_TIME_WRAP = 4096
--- The air brings the step offset back this many times faster than the ground,
--- so a jump is not smoothed.
-local AIR_CATCH_UP = 4
 
 -- What Camera reads off the character each frame. The table is reused.
 export type Input = {
@@ -26,7 +23,8 @@ export type Input = {
 	-- speed the character is walking at so pushing into a wall does not bob.
 	-- While climbing, the climbing speed.
 	speed: number,
-	-- The root's actual horizontal speed, for the step smoothing allowance.
+	-- The root's actual horizontal speed, which sets how fast the view climbs
+	-- steps.
 	horizontalSpeed: number,
 	-- Walking and full sprinting speed right now, after multipliers.
 	walkSpeed: number,
@@ -39,6 +37,8 @@ export type Input = {
 	-- The root's vertical velocity and height.
 	verticalSpeed: number,
 	height: number,
+	-- workspace.Gravity, to work out the end of a fall between two frames.
+	gravity: number,
 	-- 0 with full stamina, 1 with none.
 	fatigue: number,
 	-- Multiplies every motion (see Config.camera.motionScale).
@@ -53,18 +53,34 @@ export type State = {
 	-- up to 1 after zooming into first person.
 	presence: number,
 	bobPhase: number,
+	-- Bob cycles (two steps each) per second, last frame.
+	bobCadence: number,
 	bobScale: number,
 	tilt: number,
 	fatigue: number,
 	breathPhase: number,
+	-- What the bob size, tilt, tiredness and sprint field of view were easing
+	-- toward last frame, nil before the first. These eases take the target to
+	-- have moved in a straight line over the frame, so an input that ramps up
+	-- leaves the same lag at any frame rate.
+	bobTarget: number?,
+	tiltTarget: number?,
+	fatigueTarget: number?,
+	fovTarget: number?,
 	wasAirborne: boolean,
-	-- The fastest fall since leaving the ground (negative is down).
+	-- The fastest fall since leaving the ground (negative is down), and the
+	-- height it was seen at.
 	airLowestSpeed: number,
+	airLowestHeight: number?,
 	landDrop: number,
 	landDropVelocity: number,
 	landPitch: number,
 	landPitchVelocity: number,
+	-- The last frame's height, vertical velocity and footing, nil height
+	-- before the first frame.
 	lastHeight: number?,
+	lastVerticalSpeed: number,
+	wasGrounded: boolean,
 	stepOffset: number,
 	sprintFov: number,
 	kickRotation: Vector3,
@@ -100,6 +116,7 @@ function CameraMotion.newInput(): Input
 		airborne = false,
 		verticalSpeed = 0,
 		height = 0,
+		gravity = 196.2,
 		fatigue = 0,
 		motionScale = 1,
 		firstPerson = true,
@@ -117,17 +134,25 @@ function CameraMotion.reset(state: State)
 	state.time = 0
 	state.presence = 0
 	state.bobPhase = BOB_REST_PHASE
+	state.bobCadence = 0
 	state.bobScale = 0
 	state.tilt = 0
 	state.fatigue = 0
 	state.breathPhase = 0
+	state.bobTarget = nil
+	state.tiltTarget = nil
+	state.fatigueTarget = nil
+	state.fovTarget = nil
 	state.wasAirborne = false
 	state.airLowestSpeed = 0
+	state.airLowestHeight = nil
 	state.landDrop = 0
 	state.landDropVelocity = 0
 	state.landPitch = 0
 	state.landPitchVelocity = 0
 	state.lastHeight = nil
+	state.lastVerticalSpeed = 0
+	state.wasGrounded = false
 	state.stepOffset = 0
 	state.sprintFov = 0
 	state.kickRotation = Vector3.zero
@@ -226,12 +251,22 @@ local function stepBob(
 			else 1 + (bob.sprintScale - 1) * sprintBlend
 		targetScale = math.min(moveRatio, 1) * kind
 	end
-	state.bobScale = Math.approach(state.bobScale, targetScale, bob.responseTime, dt)
+	state.bobScale = Math.follow(
+		state.bobScale,
+		state.bobTarget or targetScale,
+		targetScale,
+		bob.responseTime,
+		dt
+	)
+	state.bobTarget = targetScale
 
-	-- The phase keeps the last speed's pace while the bob eases out, so the
-	-- steps wind down instead of freezing; it stops with the character.
+	-- The phase stops with the character, and the shrinking scale brings the
+	-- view back to rest from wherever the step was. It advances by the pace
+	-- at both ends of the frame, so speeding up shifts it the same at any
+	-- frame rate.
 	local cadence = if stepping then bob.frequency * moveRatio ^ bob.cadencePower else 0
-	state.bobPhase = (state.bobPhase + TWO_PI * cadence * dt) % TWO_PI
+	state.bobPhase = (state.bobPhase + math.pi * (state.bobCadence + cadence) * dt) % TWO_PI
+	state.bobCadence = cadence
 	if targetScale == 0 and state.bobScale < BOB_STOPPED_SCALE then
 		state.bobPhase = BOB_REST_PHASE
 	end
@@ -241,11 +276,20 @@ local function stepLanding(state: State, settings: Config.Config, input: Input, 
 	local landing = settings.landing
 	if input.airborne then
 		state.wasAirborne = true
-		state.airLowestSpeed = math.min(state.airLowestSpeed, input.verticalSpeed)
+		if input.verticalSpeed < state.airLowestSpeed then
+			state.airLowestSpeed = input.verticalSpeed
+			state.airLowestHeight = input.height
+		end
 	elseif state.wasAirborne then
 		state.wasAirborne = false
-		local impact = -state.airLowestSpeed
+		-- The fall goes on for part of a frame after the last look at it; the
+		-- height lost since gives the speed at touchdown, which is then the
+		-- same at any frame rate.
+		local lowestHeight = state.airLowestHeight
+		local drop = if lowestHeight then math.max(lowestHeight - input.height, 0) else 0
+		local impact = math.sqrt(state.airLowestSpeed ^ 2 + 2 * input.gravity * drop)
 		state.airLowestSpeed = 0
+		state.airLowestHeight = nil
 		local span = landing.maxSpeed - landing.minSpeed
 		local share = if span > 0
 			then math.clamp((impact - landing.minSpeed) / span, 0, 1)
@@ -275,28 +319,47 @@ local function stepLanding(state: State, settings: Config.Config, input: Input, 
 	)
 end
 
+-- How far the root's own vertical velocity carried it over a frame, from the
+-- speeds at the frame's two ends. The slower end counts, so the brief spike
+-- of a step caught by one frame does not; a slope or a lift, which keeps its
+-- speed, does.
+local function riseFromVelocity(before: number, after: number, dt: number): number
+	if before > 0 and after > 0 then
+		return math.min(before, after) * dt
+	elseif before < 0 and after < 0 then
+		return math.max(before, after) * dt
+	end
+	return 0
+end
+
 local function stepSmoothing(state: State, settings: Config.Config, input: Input, dt: number)
 	local smoothing = settings.stepSmoothing
-	local lastHeight = state.lastHeight or input.height
-	local rise = input.height - lastHeight
+	local lastHeight = state.lastHeight
+	local lastVerticalSpeed = state.lastVerticalSpeed
+	local wasGrounded = state.wasGrounded
 	state.lastHeight = input.height
+	state.lastVerticalSpeed = input.verticalSpeed
+	state.wasGrounded = input.grounded
 
-	if smoothing.responseTime <= 0 or math.abs(rise) > smoothing.teleportDistance then
+	if not smoothing.enabled or lastHeight == nil then
 		state.stepOffset = 0
 		return
 	end
-	if input.grounded then
-		-- Only the part of the rise faster than walking up a slope could make
-		-- is held back, so slopes pass through with no delay.
-		local allowed = (smoothing.allowance + input.horizontalSpeed) * dt
-		local excess = rise - math.clamp(rise, -allowed, allowed)
-		state.stepOffset =
-			math.clamp(state.stepOffset - excess, -smoothing.maxOffset, smoothing.maxOffset)
+	local rise = input.height - lastHeight
+	if math.abs(rise) > smoothing.teleportDistance then
+		state.stepOffset = 0
+		return
 	end
-	local responseTime = if input.grounded
-		then smoothing.responseTime
-		else smoothing.responseTime / AIR_CATCH_UP
-	state.stepOffset = Math.approach(state.stepOffset, 0, responseTime, dt)
+	-- A step moves the root between two frames without a velocity to show
+	-- for it, at any frame rate. That part is held back, then let out at a
+	-- steady pace over real time. The end of a fall is the landing dip's.
+	if input.grounded and wasGrounded then
+		local popped = rise - riseFromVelocity(lastVerticalSpeed, input.verticalSpeed, dt)
+		state.stepOffset =
+			math.clamp(state.stepOffset - popped, -smoothing.maxOffset, smoothing.maxOffset)
+	end
+	local catchUp = (smoothing.catchUpSpeed + input.horizontalSpeed) * dt
+	state.stepOffset -= math.clamp(state.stepOffset, -catchUp, catchUp)
 end
 
 -- Advances the motion by `dt` seconds and leaves the result in the state's
@@ -316,11 +379,25 @@ function CameraMotion.step(state: State, settings: Config.Config, input: Input, 
 	stepSmoothing(state, settings, input, dt)
 
 	local tiltTarget = -math.clamp(input.strafe, -1, 1) * math.rad(settings.strafeTilt.degrees)
-	state.tilt = Math.approach(state.tilt, tiltTarget, settings.strafeTilt.responseTime, dt)
+	state.tilt = Math.follow(
+		state.tilt,
+		state.tiltTarget or tiltTarget,
+		tiltTarget,
+		settings.strafeTilt.responseTime,
+		dt
+	)
+	state.tiltTarget = tiltTarget
 
 	local breathing = settings.breathing
-	state.fatigue =
-		Math.approach(state.fatigue, math.clamp(input.fatigue, 0, 1), breathing.responseTime, dt)
+	local fatigueTarget = math.clamp(input.fatigue, 0, 1)
+	state.fatigue = Math.follow(
+		state.fatigue,
+		state.fatigueTarget or fatigueTarget,
+		fatigueTarget,
+		breathing.responseTime,
+		dt
+	)
+	state.fatigueTarget = fatigueTarget
 	local fatigue = state.fatigue
 	state.breathPhase = (
 		state.breathPhase + TWO_PI * lerp(breathing.rate, breathing.tiredRate, fatigue) * dt
@@ -338,7 +415,14 @@ function CameraMotion.step(state: State, settings: Config.Config, input: Input, 
 	local swayRotation = (driftRotation + jitterRotation) * swayScale
 
 	local fovTarget = settings.sprintFov.degrees * sprintBlend
-	state.sprintFov = Math.approach(state.sprintFov, fovTarget, settings.sprintFov.responseTime, dt)
+	state.sprintFov = Math.follow(
+		state.sprintFov,
+		state.fovTarget or fovTarget,
+		fovTarget,
+		settings.sprintFov.responseTime,
+		dt
+	)
+	state.fovTarget = fovTarget
 
 	state.kickRotation, state.kickRotationVelocity = stepSpring3(
 		state.kickRotation,

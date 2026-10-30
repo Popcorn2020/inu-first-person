@@ -166,6 +166,7 @@ local function fillInput(camera: Camera, rig: Character.Rig, firstPerson: boolea
 	input.airborne = airborne
 	input.verticalSpeed = velocity.Y
 	input.height = root.Position.Y
+	input.gravity = workspace.Gravity
 	input.fatigue = Shared.fatigue
 	input.motionScale = getMotionScale()
 	input.firstPerson = firstPerson
@@ -329,9 +330,16 @@ function Camera.setOffset(key: string, offset: CFrame?)
 	else
 		offsets[key] = nil
 	end
+	-- Multiplied in the order of their keys: CFrames do not commute, and a
+	-- table's own order is not fixed.
+	local keys = {}
+	for name in offsets do
+		table.insert(keys, name)
+	end
+	table.sort(keys)
 	local total = CFrame.identity
-	for _, value in offsets do
-		total *= value
+	for _, name in keys do
+		total *= offsets[name]
 	end
 	offsetTotal = total
 end

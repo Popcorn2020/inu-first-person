@@ -117,13 +117,14 @@ local DEFAULTS = {
 		damping = 0.55,
 	},
 
-	-- Characters pop up steps in a frame or two; the view rises smoothly instead.
+	-- Characters pop up and down steps in a frame or two; the view climbs them
+	-- at a steady pace instead. Slopes and lifts, which move the character
+	-- with a velocity, are followed as they are.
 	stepSmoothing = {
-		-- How quickly the view catches up with the character. 0 turns it off.
-		responseTime = 0.08,
-		-- Vertical speed, on top of the walking speed, that passes without
-		-- smoothing, so walking up and down slopes is not delayed.
-		allowance = 20,
+		enabled = true,
+		-- The view catches up with the character at the character's horizontal
+		-- speed plus this, so it keeps pace on stairs up to about 45 degrees.
+		catchUpSpeed = 4,
 		-- The most the view can trail the character.
 		maxOffset = 2,
 		-- A jump in height bigger than this in one frame is a teleport, which

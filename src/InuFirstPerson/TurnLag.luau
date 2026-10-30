@@ -2,7 +2,7 @@
 -- The body's facing trailing the camera's yaw. The yaw is unwrapped so a turn
 -- through ±180 degrees is not a jump, and the lag is the exact first-order lag
 -- for a turn at a steady rate within each frame, so a steady turn trails by
--- the same angle at any frame rate. Requires only Math, so the desk tests can
+-- the same angle at any frame rate. Requires only Math, so the Lune tests can
 -- load it outside Roblox.
 
 local Math = require(script.Parent.Math)
@@ -25,8 +25,8 @@ function TurnLag.reset(state: State)
 end
 
 -- Returns the trailing yaw for the camera's `yaw` now. `lagTime` is the time
--- constant of the lag and `maxLag` caps how far it trails, both in seconds
--- and radians.
+-- constant of the lag in seconds, and `maxLag` caps how far it trails, in
+-- radians.
 function TurnLag.step(
 	state: State,
 	yaw: number,

@@ -3,7 +3,7 @@
 -- refills after a short wait, and once empty stays exhausted until it is back
 -- to a share of max. Each step splits at the end of the wait, so the result
 -- does not depend on how the time is cut into frames. Requires nothing, so
--- the desk tests can load it outside Roblox.
+-- the Lune tests can load it outside Roblox.
 
 export type Settings = {
 	max: number,

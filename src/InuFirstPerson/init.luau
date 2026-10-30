@@ -165,7 +165,8 @@ InuFirstPerson.camera = {
 		Camera.kick(rotationDegrees, position)
 	end,
 	-- Holds an offset on the camera, in its own space, under `key` until set
-	-- again or cleared with nil (a lean, an aim). Offsets multiply together.
+	-- again or cleared with nil (a lean, an aim). Offsets multiply together
+	-- in the order of their keys.
 	setOffset = function(key: string, offset: CFrame?)
 		requireRunning("camera.setOffset")
 		checkKey("camera.setOffset", key)
