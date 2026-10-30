@@ -57,9 +57,13 @@ local CHANNELS = {
 	"sprint fov",
 	"kick pitch",
 	"kick back",
+	"kick shake",
+	"view yaw",
 	"world height",
-	"body height",
 	"fov offset",
+	"sway angle",
+	"kick angle",
+	"shake angle",
 }
 
 local function ramp(time: number, start: number, length: number, from: number, to: number): number
@@ -134,11 +138,15 @@ local function sample(state: any): { number }
 		state.landPitch,
 		state.stepOffset,
 		state.sprintFov,
-		state.kickRotation.X,
-		state.kickPosition.Z,
+		state.snapRotation.X + state.settleRotation.X,
+		state.snapPosition.Z + state.settlePosition.Z,
+		state.trauma,
+		state.localRotation.Y,
 		state.worldHeight,
-		state.bodyHeight,
 		state.fovOffset,
+		state.swayAngle,
+		state.kickAngle,
+		state.shakeAngle,
 	}
 end
 

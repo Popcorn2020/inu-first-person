@@ -1,6 +1,22 @@
 {
-  "name": "InuFirstPerson",
+  "name": "InuFirstPersonCheck",
   "tree": {
-    "$path": "src/InuFirstPerson"
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "InuFirstPerson": {
+        "$path": "src/InuFirstPerson"
+      }
+    },
+    "ServerScriptService": {
+      "InuFirstPersonServer": {
+        "$path": "src/InuFirstPersonServer",
+        "SyncProtocol": {
+          "$path": "src/InuFirstPerson/SyncProtocol.luau"
+        },
+        "Version": {
+          "$path": "src/InuFirstPerson/Version.luau"
+        }
+      }
+    }
   }
 }

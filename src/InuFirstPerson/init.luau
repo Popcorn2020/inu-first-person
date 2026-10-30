@@ -1,20 +1,23 @@
 --!strict
--- InuFirstPerson: a first-person base for any Roblox experience. It moves the
--- camera like a head (bob, lean, sway, breathing, landing, smooth steps),
--- shows the player's own body when they look down, and adds sprinting with
--- stamina, a gauge and a touch button. It runs on the client only:
+-- InuFirstPerson: a first-person base for any Roblox experience. It puts the
+-- camera at the eye and moves it like a head (bob, lean, sway, breathing,
+-- landing, smooth steps, kicks), shows the player's own body, turns heads,
+-- waists and arms to where players look, and adds sprinting with stamina, a
+-- gauge and a touch button. It runs on the client:
 --
 --     local InuFirstPerson = require(ReplicatedStorage.InuFirstPerson)
 --     InuFirstPerson.start({ sprint = { runMultiplier = 1.5 } })
 --
--- Config.luau lists every setting with its default; the functions below are
--- the whole API.
+-- Others see where each player looks once the server half,
+-- InuFirstPersonServer, is started too. Config.luau lists every setting with
+-- its default; the functions below are the whole API.
 
 local RunService = game:GetService("RunService")
 
 local Body = require(script.Body)
 local Camera = require(script.Camera)
 local Config = require(script.Config)
+local Look = require(script.Look)
 local Shared = require(script.Shared)
 local Sprint = require(script.Sprint)
 local SprintInput = require(script.SprintInput)
@@ -94,8 +97,9 @@ function InuFirstPerson.start(overrides: { [any]: any }?)
 	local button = Ui.start()
 	SprintInput.start(button)
 	Sprint.start()
-	Camera.start()
 	Body.start()
+	Look.start()
+	Camera.start()
 	if config.debug.measure then
 		startMeasuring()
 	end
@@ -103,14 +107,17 @@ function InuFirstPerson.start(overrides: { [any]: any }?)
 end
 
 -- Stops everything and puts back what start changed (camera mode, zoom,
--- field of view); the character keeps walking at its walking speed, without
--- sprinting or multipliers. What the functions below set is cleared.
+-- field of view, AutoRotate, the joints it turned); the character keeps
+-- walking at its walking speed, without sprinting or multipliers. What the
+-- functions below set is cleared.
 function InuFirstPerson.stop()
 	if not running then
 		return
 	end
 	running = false
+	-- The body first, while the camera still knows it is in first person.
 	Body.stop()
+	Look.stop()
 	Camera.stop()
 	Sprint.stop()
 	SprintInput.stop()
@@ -131,6 +138,16 @@ end
 -- The settings in use (the defaults while stopped). Frozen.
 function InuFirstPerson.getConfig(): Config.Config
 	return Shared.config
+end
+
+-- Changes settings while running, naming only what differs from the
+-- settings in use, checked as start checks them. Most take effect at once;
+-- those read only on start (camera.firstPerson, camera.fieldOfView, input,
+-- ui.enabled, ui.template, ui.sprintButton, debug) wait for the next start.
+function InuFirstPerson.configure(overrides: { [any]: any })
+	requireRunning("configure")
+	Shared.config = Config.resolve(overrides, Shared.config, "configure")
+	Sprint.applyConfig()
 end
 
 InuFirstPerson.camera = {
@@ -192,10 +209,20 @@ InuFirstPerson.camera = {
 	getLayer = function(): CFrame
 		return Camera.getLayer()
 	end,
+	-- How much each part of the motion turns the view this frame, in
+	-- degrees: bob, sway, breath, tilt, landing, kick (the springs), shake
+	-- (the kicks' shake) and rotation (all of it); position, how far the
+	-- motion moves the view, in studs; fatigue, 0 with full stamina to 1
+	-- with none; fovOffset, degrees. All 0 while the motion is off. A new
+	-- table each call.
+	getMotion = function(): Camera.Motion
+		return Camera.getMotion()
+	end,
 }
 
 InuFirstPerson.body = {
-	-- Hides the body and stops copying its pose, or brings it back.
+	-- Hides the body in first person, as the default camera does, or shows
+	-- it again.
 	setEnabled = function(enabled: boolean)
 		requireRunning("body.setEnabled")
 		Body.setEnabled(enabled == true)
@@ -203,22 +230,46 @@ InuFirstPerson.body = {
 	isEnabled = function(): boolean
 		return running and Body.isEnabled()
 	end,
-	-- The copy under the camera, or nil until it is built.
-	getModel = function(): Model?
-		return Body.getModel()
+}
+
+InuFirstPerson.look = {
+	-- Turns off, or back on, everything this client does about where
+	-- characters look: turning the local character with the view in first
+	-- person (Humanoid.AutoRotate is the game's again), and the head, waist
+	-- and arm of every character. Others still see the local player's look
+	-- fade to straight ahead.
+	setEnabled = function(enabled: boolean)
+		requireRunning("look.setEnabled")
+		Look.setEnabled(enabled == true)
 	end,
-	-- Rebuilds the copy soon, for changes it cannot see (a recolored part, a
-	-- resized avatar).
-	rebuild = function()
-		requireRunning("body.rebuild")
-		Body.rebuild()
+	isEnabled = function(): boolean
+		return running and Look.isEnabled()
 	end,
-	-- `callback(model, placed)` runs every frame right after the copy takes
-	-- its pose, inside the render step, so it may move the copy's parts (to
-	-- reach for something, say). It must not yield. nil removes it.
-	setPoseCallback = function(callback: Body.PoseCallback?)
-		requireRunning("body.setPoseCallback")
-		Body.setPoseCallback(callback)
+	-- `callback(character, player)` runs every frame right after the look
+	-- turns a character's joints: the local character, and each other one
+	-- whose look shows. It runs before physics, where the Animator has written
+	-- the pose, so it may write joints' Transform on top (an IK that brings
+	-- the left hand to a held Tool, say). What it writes on the neck, waist
+	-- and right shoulder is redone each frame from the animation. It must not
+	-- yield. nil removes it.
+	setPoseCallback = function(callback: Look.PoseCallback?)
+		requireRunning("look.setPoseCallback")
+		if callback ~= nil and typeof(callback) ~= "function" then
+			error("InuFirstPerson.look.setPoseCallback takes a function or nil", 2)
+		end
+		Look.setPoseCallback(callback)
+	end,
+	-- Where `player` (the local player if nil) looks as this client shows
+	-- it, in degrees relative to their character's facing: yaw (left
+	-- positive), then pitch (up positive). nil, nil while nothing is known.
+	getAngles = function(player: Player?): (number?, number?)
+		if player ~= nil and (typeof(player) ~= "Instance" or not player:IsA("Player")) then
+			error("InuFirstPerson.look.getAngles takes a Player or nothing", 2)
+		end
+		if not running then
+			return nil, nil
+		end
+		return Look.getAngles(player)
 	end,
 }
 

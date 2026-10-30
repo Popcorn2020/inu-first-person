@@ -48,9 +48,23 @@ return function(load: (string) -> any)
 	Check.ok("template false", Config.resolve({ ui = { template = false } }).ui.template == false)
 	Check.ok(
 		"a Vector3",
-		Config.resolve({ body = { offset = Vector3.new(0, 0, 1) } }).body.offset
+		Config.resolve({ bob = { amplitude = Vector3.new(0, 0, 1) } }).bob.amplitude
 			== Vector3.new(0, 0, 1)
 	)
+
+	-- configure merges onto the settings in use, not the defaults.
+	local base = Config.resolve({ look = { turnTime = 0.2 }, input = { keyboard = {} } })
+	local configured = Config.resolve({ kick = { shake = 0.5 } }, base, "configure")
+	Check.ok(
+		"an override on a base keeps the base's overrides",
+		configured.look.turnTime == 0.2 and configured.kick.shake == 0.5
+	)
+	Check.ok("an empty list in the base is kept", #configured.input.keyboard == 0)
+	Check.ok(
+		"a list can be set on a base whose list is empty",
+		#Config.resolve({ input = { keyboard = { Enum.KeyCode.Q } } }, base).input.keyboard == 1
+	)
+	Check.ok("the base is untouched", base.kick.shake == defaults.kick.shake)
 
 	local function resolving(overrides: any): () -> ()
 		return function()
@@ -115,8 +129,26 @@ return function(load: (string) -> any)
 	)
 	Check.errors(
 		"a table for a Vector3",
-		"setting 'body.offset' takes a Vector3, got a table",
-		resolving({ body = { offset = { 0, 0, 1 } } })
+		"setting 'bob.amplitude' takes a Vector3, got a table",
+		resolving({ bob = { amplitude = { 0, 0, 1 } } })
+	)
+	Check.errors(
+		"past an upper bound",
+		"setting 'look.waistShare' takes 1 or less",
+		resolving({ look = { waistShare = 1.5 } })
+	)
+	Check.errors(
+		"a head that tilts past the view",
+		"setting 'look.headPitchShare' takes 1 or less",
+		resolving({ look = { headPitchShare = 1.2 } })
+	)
+	Check.errors(
+		"the server's rate",
+		"setting 'sync.sendRate' takes 30 or less",
+		resolving({ sync = { sendRate = 60 } })
 	)
 	Check.errors("settings that are not a table", "start takes a table", resolving(5))
+	Check.errors("configure names itself", "configure takes a table", function()
+		Config.resolve(5 :: any, defaults, "configure")
+	end)
 end

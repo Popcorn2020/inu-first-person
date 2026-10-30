@@ -7,13 +7,17 @@ local Config = require(script.Parent.Config)
 local Signal = require(script.Parent.Signal)
 
 local Shared = {
-	-- Written by init on start.
+	-- Written by init on start and configure.
 	config = Config.defaults,
 
 	-- Written by Camera: the camera is at the character's head this frame.
 	firstPerson = false,
-	-- Written by Camera: the step smoothing the body follows, in studs.
-	bodyHeight = 0,
+	-- Written by Camera: where the default camera looks this frame, before
+	-- the motion goes on (radians: yaw, left positive, and pitch, up
+	-- positive), and whether it follows the character at all.
+	viewYaw = 0,
+	viewPitch = 0,
+	viewOnCharacter = false,
 
 	-- Written by Sprint: walking and full sprinting speed after multipliers.
 	walkingSpeed = 16,

@@ -4,21 +4,20 @@ Known problems with InuFirstPerson, what has not been tried, and ideas. Each ite
 
 ## Known problems
 
-- Holding a Tool and looking far down opens a gap between the right arm, which is drawn where the real arm is, and the shoulder of the body copy.
+- The look turns the joints before physics, so heads, waists and the Tool arm follow the view one frame late. The Tool's tilt trails by that frame on top of `look.toolAimLag`; its turn does not, since the whole character turns with the view.
+- Seated or climbing, turning the view past `look.neckYawLimit` keeps turning the eye about the neck, so looking right behind puts the eye behind the neck. The head is hidden, so it shows only as a view from a little further back.
 - `stamina.jumpCost` takes stamina for each jump but does not stop a jump when there is not enough.
 - A platform moved by setting its CFrame lifts the character without a velocity, so the view trails it by up to `stepSmoothing.maxOffset` until it stops. Platforms moved by physics are followed as they are.
-- Changes to the character's colors and size show on the body copy only after `body.rebuild()`.
 - With a toggle mode, turning from one move key to another (W released a frame before D is pressed) stops sprinting for that frame, so `sprintChanged` fires twice.
-- While zooming between 0.5 and 1 stud, the real character and the body copy may show together for a moment. Not yet seen in play.
 
 ## Not tried
 
-- VR. The body copy hides and the motion is scaled by `camera.vrScale`, which is 0 by default.
+- VR. The body is left as the default camera shows it, and the motion is scaled by `camera.vrScale`, which is 0 by default.
 - Characters driven by a ControllerManager (the Character Controller Library). Sprinting writes `Humanoid.WalkSpeed`, which may not move them; the module warns once.
 - Server Authority (`Workspace.AuthorityMode` set to Server). Sprinting sets the walking speed on the client.
 
 ## Ideas
 
-- Arms that reach for things (IK), built on `body.setPoseCallback`.
+- Arms that reach for things (IK), built on `look.setPoseCallback`.
 - Crouching.
 - Signals for landing (with the fall speed) and for footsteps (on the bob's beat), for sounds and effects that should match the view.

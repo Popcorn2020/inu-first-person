@@ -1,8 +1,8 @@
 --!strict
 -- The camera's motion worked out from plain numbers about the character:
 -- head bob, strafe lean, hand-held sway, breathing, the landing dip, step
--- smoothing, the sprint field of view and kicks. Camera feeds it each frame
--- and puts the result on the Roblox camera. It touches no Instances, so the
+-- smoothing, the sprint field of view, and kicks with their shake. Camera
+-- feeds it each frame and puts the result on the Roblox camera. It touches no Instances, so the
 -- Lune tests can run it at any frame rate outside Roblox.
 
 local Config = require(script.Parent.Config)
@@ -16,6 +16,8 @@ local BOB_STOPPED_SCALE = 1e-3
 -- The noise time wraps at this period to keep math.noise precise. The jump at
 -- the wrap is far below what the eye can see at the sway's sizes.
 local NOISE_TIME_WRAP = 4096
+-- A kick of this many degrees adds a full shake at kick.shake 1.
+local FULL_SHAKE_DEGREES = 10
 
 -- What Camera reads off the character each frame. The table is reused.
 export type Input = {
@@ -87,10 +89,21 @@ export type State = {
 	wasGrounded: boolean,
 	stepOffset: number,
 	sprintFov: number,
-	kickRotation: Vector3,
-	kickRotationVelocity: Vector3,
-	kickPosition: Vector3,
-	kickPositionVelocity: Vector3,
+	-- The kick's two springs, the snap and the settle, for rotation (radians)
+	-- and position, with their velocities.
+	snapRotation: Vector3,
+	snapRotationVelocity: Vector3,
+	snapPosition: Vector3,
+	snapPositionVelocity: Vector3,
+	settleRotation: Vector3,
+	settleRotationVelocity: Vector3,
+	settlePosition: Vector3,
+	settlePositionVelocity: Vector3,
+	-- 0..1: how much the kicks shake the view; it falls at kick.shakeDecay a
+	-- second.
+	trauma: number,
+	-- Kicks so far, which picks each kick's variation.
+	kickCount: number,
 
 	-- The result of the last step.
 	-- Offset in the camera's own space.
@@ -99,11 +112,19 @@ export type State = {
 	localRotation: Vector3,
 	-- World-up offset of the camera: the step smoothing plus the landing dip.
 	worldHeight: number,
-	-- The step smoothing part of worldHeight, which the body follows so it
-	-- stays put in the view.
-	bodyHeight: number,
 	-- Degrees added to the field of view.
 	fovOffset: number,
+	-- How far each part of the motion turns the view this frame, in radians
+	-- after the motion scale, and how far the motion moves it, in studs (for
+	-- InuFirstPerson.camera.getMotion).
+	bobAngle: number,
+	swayAngle: number,
+	breathAngle: number,
+	tiltAngle: number,
+	landingAngle: number,
+	kickAngle: number,
+	shakeAngle: number,
+	motionDistance: number,
 }
 
 local CameraMotion = {}
@@ -160,34 +181,70 @@ function CameraMotion.reset(state: State)
 	state.wasGrounded = false
 	state.stepOffset = 0
 	state.sprintFov = 0
-	state.kickRotation = Vector3.zero
-	state.kickRotationVelocity = Vector3.zero
-	state.kickPosition = Vector3.zero
-	state.kickPositionVelocity = Vector3.zero
+	state.snapRotation = Vector3.zero
+	state.snapRotationVelocity = Vector3.zero
+	state.snapPosition = Vector3.zero
+	state.snapPositionVelocity = Vector3.zero
+	state.settleRotation = Vector3.zero
+	state.settleRotationVelocity = Vector3.zero
+	state.settlePosition = Vector3.zero
+	state.settlePositionVelocity = Vector3.zero
+	state.trauma = 0
+	state.kickCount = 0
 	state.localPosition = Vector3.zero
 	state.localRotation = Vector3.zero
 	state.worldHeight = 0
-	state.bodyHeight = 0
 	state.fovOffset = 0
+	state.bobAngle = 0
+	state.swayAngle = 0
+	state.breathAngle = 0
+	state.tiltAngle = 0
+	state.landingAngle = 0
+	state.kickAngle = 0
+	state.shakeAngle = 0
+	state.motionDistance = 0
 end
 
--- Starts a kick that swings out to `rotationDegrees` (X pitch up, Y yaw left,
--- Z roll left) and `position` (camera space) and springs back.
+-- -1..1, the same for the same seed, kick and channel. A hash of the count
+-- rather than a Random, so a seed's kicks repeat in the tests.
+local function variationOf(seed: number, count: number, channel: number): number
+	return math.clamp(
+		math.noise(count * 1.618 + 0.37, seed * 3.17 + channel * 7.31, 0.5) * 2,
+		-1,
+		1
+	)
+end
+
+-- Starts a kick that swings out to about `rotationDegrees` (X pitch up, Y
+-- yaw left, Z roll left) and `position` (camera space) and springs back. The
+-- snap carries most of it out and back quickly, a little past rest, the
+-- settle eases the rest back slowly, and the view shakes for a moment.
 function CameraMotion.kick(
 	state: State,
 	settings: Config.Config,
 	rotationDegrees: Vector3,
 	position: Vector3
 )
-	local frequency, damping = settings.kick.frequency, settings.kick.damping
-	local share = Math.springKickVelocity(1, frequency, damping)
-	local rotation = Vector3.new(
-		math.rad(rotationDegrees.X),
-		math.rad(rotationDegrees.Y),
-		math.rad(rotationDegrees.Z)
-	)
-	state.kickRotationVelocity += rotation * share
-	state.kickPositionVelocity += position * share
+	local kick = settings.kick
+	state.kickCount += 1
+	local size = rotationDegrees.Magnitude
+	local spread = kick.variation * size
+	local varied = rotationDegrees
+		+ Vector3.new(
+			0,
+			variationOf(kick.seed, state.kickCount, 1) * spread,
+			variationOf(kick.seed, state.kickCount, 2) * spread
+		)
+	local rotation = Vector3.new(math.rad(varied.X), math.rad(varied.Y), math.rad(varied.Z))
+
+	local settleShare = kick.settleShare
+	local snap = Math.springKickVelocity(1 - settleShare, kick.frequency, kick.damping)
+	local settle = Math.springKickVelocity(settleShare, kick.settleFrequency, kick.settleDamping)
+	state.snapRotationVelocity += rotation * snap
+	state.snapPositionVelocity += position * snap
+	state.settleRotationVelocity += rotation * settle
+	state.settlePositionVelocity += position * settle
+	state.trauma = math.min(state.trauma + kick.shake * size / FULL_SHAKE_DEGREES, 1)
 end
 
 local function lerp(from: number, to: number, alpha: number): number
@@ -429,20 +486,52 @@ function CameraMotion.step(state: State, settings: Config.Config, input: Input, 
 	)
 	state.fovTarget = fovTarget
 
-	state.kickRotation, state.kickRotationVelocity = stepSpring3(
-		state.kickRotation,
-		state.kickRotationVelocity,
-		settings.kick.frequency,
-		settings.kick.damping,
+	local kick = settings.kick
+	state.snapRotation, state.snapRotationVelocity = stepSpring3(
+		state.snapRotation,
+		state.snapRotationVelocity,
+		kick.frequency,
+		kick.damping,
 		dt
 	)
-	state.kickPosition, state.kickPositionVelocity = stepSpring3(
-		state.kickPosition,
-		state.kickPositionVelocity,
-		settings.kick.frequency,
-		settings.kick.damping,
+	state.snapPosition, state.snapPositionVelocity = stepSpring3(
+		state.snapPosition,
+		state.snapPositionVelocity,
+		kick.frequency,
+		kick.damping,
 		dt
 	)
+	state.settleRotation, state.settleRotationVelocity = stepSpring3(
+		state.settleRotation,
+		state.settleRotationVelocity,
+		kick.settleFrequency,
+		kick.settleDamping,
+		dt
+	)
+	state.settlePosition, state.settlePositionVelocity = stepSpring3(
+		state.settlePosition,
+		state.settlePositionVelocity,
+		kick.settleFrequency,
+		kick.settleDamping,
+		dt
+	)
+	-- Trauma falls at a steady rate and the shake goes as its square
+	-- (Eiserloh, GDC 2016), on noise of the time, so it fades the same at any
+	-- frame rate.
+	state.trauma = math.max(state.trauma - kick.shakeDecay * dt, 0)
+	local shakeRotation = Vector3.zero
+	if state.trauma > 0 then
+		local x = state.time * kick.shakeFrequency
+		local function sample(channel: number): number
+			return math.clamp(math.noise(x, kick.seed * 1000 + channel * 23.71) * 2, -1, 1)
+		end
+		local degrees = Vector3.new(sample(1), sample(2), sample(3))
+			* kick.shakeDegrees
+			* state.trauma ^ 2
+		shakeRotation = Vector3.new(math.rad(degrees.X), math.rad(degrees.Y), math.rad(degrees.Z))
+	end
+	local kickRotation = state.snapRotation + state.settleRotation
+	local kickPosition = state.snapPosition + state.settlePosition
 
 	local bob = settings.bob
 	local phase = state.bobPhase
@@ -458,13 +547,26 @@ function CameraMotion.step(state: State, settings: Config.Config, input: Input, 
 	local walkingPosition = bobPosition + Vector3.new(0, breathHeight, 0) + swayPosition
 	local walkingRotation = Vector3.new(breathPitch + state.landPitch, 0, bobRoll + state.tilt)
 		+ swayRotation
-	state.localPosition = (walkingPosition * presence + state.kickPosition) * scale
-	state.localRotation = (walkingRotation * presence + state.kickRotation) * scale
+	state.localPosition = (walkingPosition * presence + kickPosition) * scale
+	state.localRotation = (walkingRotation * presence + kickRotation + shakeRotation) * scale
 	-- The step smoothing steadies the view rather than moving it, so the
 	-- motion scale leaves it alone.
 	state.worldHeight = (state.stepOffset + state.landDrop * scale) * presence
-	state.bodyHeight = state.stepOffset * presence
 	state.fovOffset = state.sprintFov * scale
+
+	local walking = presence * scale
+	state.bobAngle = math.abs(bobRoll) * walking
+	state.swayAngle = swayRotation.Magnitude * walking
+	state.breathAngle = math.abs(breathPitch) * walking
+	state.tiltAngle = math.abs(state.tilt) * walking
+	state.landingAngle = math.abs(state.landPitch) * walking
+	state.kickAngle = kickRotation.Magnitude * scale
+	state.shakeAngle = shakeRotation.Magnitude * scale
+	state.motionDistance = (state.localPosition + Vector3.new(
+		0,
+		state.landDrop * scale * presence,
+		0
+	)).Magnitude
 end
 
 return CameraMotion

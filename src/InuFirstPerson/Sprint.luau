@@ -239,6 +239,11 @@ function Sprint.stop()
 	Shared.fatigue = 0
 end
 
+-- After the settings change while running: stamina stays within the new max.
+function Sprint.applyConfig()
+	StaminaModel.set(stamina, Shared.config.stamina, stamina.value)
+end
+
 function Sprint.setEnabled(on: boolean)
 	enabled = on
 end

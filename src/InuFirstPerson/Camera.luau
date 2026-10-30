@@ -1,17 +1,25 @@
 --!strict
--- Layers CameraMotion on top of what the default camera did this frame. The
--- default camera keeps the looking around, zoom and input; this only adds
--- motion. It reads its orientation back from Camera.CFrame, so last frame's
+-- Layers the first-person eye and CameraMotion on top of what the default
+-- camera did this frame. The default camera keeps the looking around, zoom
+-- and input; this moves the camera to the eye and adds motion. The default
+-- camera reads its orientation back from Camera.CFrame, so last frame's
 -- layer comes off just before it runs and the new layer goes on just after.
 -- Left on, the sway's pitch and yaw would add up frame after frame.
+--
+-- The step right after the default camera also runs what must follow it in
+-- the same frame, in order: Look turns the character to the view, the eye
+-- is placed from the turned character, and Body shows it.
 
 local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
+local Body = require(script.Parent.Body)
 local CameraMotion = require(script.Parent.CameraMotion)
 local Character = require(script.Parent.Character)
+local Look = require(script.Parent.Look)
+local Math = require(script.Parent.Math)
 local Shared = require(script.Parent.Shared)
 
 local REVERT_STEP = "InuFirstPersonCameraRevert"
@@ -33,6 +41,9 @@ local FLOOR_PROBE_MARGIN = 1.5
 -- Surfaces steeper than this (the Y of their normal) are walls or edges, not
 -- floors with a slope to climb.
 local FLOOR_MIN_NORMAL_Y = 0.2
+-- The eye keeps this far from walls, in studs on a standard avatar: past
+-- the corners of the camera's near plane.
+local EYE_RADIUS = 0.2
 
 local Camera = {}
 
@@ -46,10 +57,14 @@ local connections: { RBXScriptConnection } = {}
 local lastRig: Character.Rig? = nil
 
 -- What the layer put on the camera last frame, taken off before the default
--- camera runs: (camera + height) * layer.
+-- camera runs: (camera + offset) * layer.
 local appliedCamera: Camera? = nil
 local appliedLayer = CFrame.identity
-local appliedHeight = 0
+local appliedOffset = Vector3.zero
+-- 0..1: how far the camera has moved to the eye, easing with first person.
+local eyeShare = 0
+-- Whether the motion went on the camera this frame.
+local moving = false
 -- The field of view as the layer left it (read back) and as it was before.
 local writtenFov: number? = nil
 local fovBefore = 0
@@ -64,9 +79,10 @@ local savedFieldOfView: number? = nil
 local savedMaxZoom: number? = nil
 local zoomInLeft: number? = nil
 
-local floorParams = RaycastParams.new()
-floorParams.FilterType = Enum.RaycastFilterType.Exclude
-floorParams.RespectCanCollide = true
+-- For the floor under the character and the walls in front of the eye.
+local worldParams = RaycastParams.new()
+worldParams.FilterType = Enum.RaycastFilterType.Exclude
+worldParams.RespectCanCollide = true
 
 local function getMotionScale(): number
 	local settings = Shared.config.camera
@@ -103,7 +119,7 @@ local function revert()
 	local camera = appliedCamera
 	appliedCamera = nil
 	if camera then
-		camera.CFrame = camera.CFrame * appliedLayer:Inverse() - Vector3.new(0, appliedHeight, 0)
+		camera.CFrame = camera.CFrame * appliedLayer:Inverse() - appliedOffset
 		local written = writtenFov
 		-- Left alone if something else set the field of view since, so a
 		-- game's own zoom is kept.
@@ -112,7 +128,7 @@ local function revert()
 		end
 	end
 	appliedLayer = CFrame.identity
-	appliedHeight = 0
+	appliedOffset = Vector3.zero
 	writtenFov = nil
 end
 
@@ -146,7 +162,7 @@ local function getFloorRiseSpeed(rig: Character.Rig, velocity: Vector3): number
 	local root = rig.root
 	local legs = math.max(rig.humanoid.HipHeight, root.Size.Y)
 	local reach = root.Size.Y / 2 + legs + FLOOR_PROBE_MARGIN * Character.getScale(rig)
-	local hit = workspace:Raycast(root.Position, Vector3.new(0, -reach, 0), floorParams)
+	local hit = workspace:Raycast(root.Position, Vector3.new(0, -reach, 0), worldParams)
 	if not hit then
 		return velocity.Y
 	end
@@ -157,6 +173,32 @@ local function getFloorRiseSpeed(rig: Character.Rig, velocity: Vector3): number
 	end
 	local across = velocity - floorVelocity
 	return floorVelocity.Y - (normal.X * across.X + normal.Z * across.Z) / normal.Y
+end
+
+-- How far the eye is from where the default camera put the camera: in front
+-- of the neck at rest, turned with the head (the view's yaw, and the share of
+-- its pitch the head takes), short of any wall in between. Zero for a
+-- character without a neck joined to its root.
+local function getEyeOffset(camera: Camera, rig: Character.Rig): Vector3
+	local neck = Look.getNeckOffset(rig)
+	if not neck then
+		return Vector3.zero
+	end
+	local settings = Shared.config.camera
+	local scale = Character.getScale(rig)
+	local pivot = rig.root.CFrame:PointToWorldSpace(neck + rig.humanoid.CameraOffset)
+	local pitch, yaw = camera.CFrame:ToEulerAnglesYXZ()
+	local head = CFrame.fromEulerAnglesYXZ(pitch * Shared.config.look.headPitchShare, yaw, 0)
+	local reach =
+		head:VectorToWorldSpace(Vector3.new(0, settings.eyeHeight, -settings.eyeForward) * scale)
+	local eye = pivot + reach
+	if reach.Magnitude > 1e-3 then
+		local hit = workspace:Spherecast(pivot, EYE_RADIUS * scale, reach, worldParams)
+		if hit then
+			eye = pivot + reach.Unit * hit.Distance
+		end
+	end
+	return eye - camera.CFrame.Position
 end
 
 local function fillInput(camera: Camera, rig: Character.Rig, firstPerson: boolean)
@@ -211,7 +253,8 @@ local function apply(rawDt: number)
 	if rig ~= lastRig then
 		lastRig = rig
 		CameraMotion.reset(motion)
-		floorParams.FilterDescendantsInstances = if rig then { rig.character } else {}
+		eyeShare = 0
+		worldParams.FilterDescendantsInstances = if rig then { rig.character } else {}
 	end
 
 	local firstPerson = judgeFirstPerson(camera, rig)
@@ -221,34 +264,54 @@ local function apply(rawDt: number)
 	end
 	stepZoomIn(dt, firstPerson, rig)
 
-	Shared.bodyHeight = 0
-	if
-		enabled
-		and camera
-		and rig
+	local onCharacter = camera ~= nil
+		and rig ~= nil
 		and camera.CameraType == Enum.CameraType.Custom
 		and isSubject(camera, rig)
-	then
-		fillInput(camera, rig, firstPerson)
-		CameraMotion.step(motion, Shared.config, input, dt)
+	Shared.viewOnCharacter = onCharacter
+	if camera and onCharacter then
+		local pitch, yaw = camera.CFrame:ToEulerAnglesYXZ()
+		Shared.viewYaw = yaw
+		Shared.viewPitch = pitch
+	end
+	Look.face(rig, firstPerson, dt)
 
-		local rotation = motion.localRotation
-		local layer = offsetTotal
-			* CFrame.new(motion.localPosition)
-			* CFrame.fromEulerAnglesYXZ(rotation.X, rotation.Y, rotation.Z)
-		camera.CFrame = (camera.CFrame + Vector3.new(0, motion.worldHeight, 0)) * layer
+	eyeShare = Math.approach(
+		eyeShare,
+		if firstPerson then 1 else 0,
+		Shared.config.camera.transitionTime,
+		dt
+	)
+	moving = false
+	if camera and rig and onCharacter then
+		local offset = Vector3.zero
+		local layer = CFrame.identity
+		if eyeShare > 0 then
+			offset = getEyeOffset(camera, rig) * eyeShare
+		end
+		if enabled then
+			fillInput(camera, rig, firstPerson)
+			CameraMotion.step(motion, Shared.config, input, dt)
+			local rotation = motion.localRotation
+			layer = offsetTotal
+				* CFrame.new(motion.localPosition)
+				* CFrame.fromEulerAnglesYXZ(rotation.X, rotation.Y, rotation.Z)
+			offset += Vector3.new(0, motion.worldHeight, 0)
+			moving = true
+		end
+		camera.CFrame = (camera.CFrame + offset) * layer
 		appliedCamera = camera
 		appliedLayer = layer
-		appliedHeight = motion.worldHeight
-		Shared.bodyHeight = motion.bodyHeight
+		appliedOffset = offset
 
-		local fovOffset = motion.fovOffset + fovOffsetTotal
+		local fovOffset = if enabled then motion.fovOffset + fovOffsetTotal else 0
 		if fovOffset ~= 0 then
 			fovBefore = camera.FieldOfView
 			camera.FieldOfView = fovBefore + fovOffset
 			writtenFov = camera.FieldOfView
 		end
 	end
+	Body.step(rig)
 
 	if Shared.measuring then
 		Shared.spentTime += os.clock() - started
@@ -268,6 +331,7 @@ function Camera.start()
 	running = true
 	enabled = true
 	lastRig = nil
+	eyeShare = 0
 	CameraMotion.reset(motion)
 
 	local mode = Shared.config.camera.firstPerson
@@ -326,7 +390,7 @@ function Camera.stop()
 		Shared.firstPerson = false
 		Shared.signals.firstPersonChanged:Fire(false)
 	end
-	Shared.bodyHeight = 0
+	Shared.viewOnCharacter = false
 end
 
 function Camera.setEnabled(on: boolean)
@@ -374,10 +438,46 @@ function Camera.setOffset(key: string, offset: CFrame?)
 	offsetTotal = total
 end
 
--- The layer put on the camera this frame, in the camera's own space (the
--- world-up part, step smoothing and the landing dip, is not in it).
+-- The layer put on the camera this frame, in the camera's own space. The
+-- move to the eye, the step smoothing and the landing dip are not in it.
 function Camera.getLayer(): CFrame
 	return appliedLayer
+end
+
+export type Motion = {
+	bob: number,
+	sway: number,
+	breath: number,
+	tilt: number,
+	landing: number,
+	kick: number,
+	shake: number,
+	rotation: number,
+	position: number,
+	fatigue: number,
+	fovOffset: number,
+}
+
+-- How much each part of the motion turns the view this frame, in degrees,
+-- and the rest as InuFirstPerson.camera.getMotion describes. A new table.
+function Camera.getMotion(): Motion
+	local working = running and moving
+	local function degrees(radians: number): number
+		return if working then math.deg(radians) else 0
+	end
+	return {
+		bob = degrees(motion.bobAngle),
+		sway = degrees(motion.swayAngle),
+		breath = degrees(motion.breathAngle),
+		tilt = degrees(motion.tiltAngle),
+		landing = degrees(motion.landingAngle),
+		kick = degrees(motion.kickAngle),
+		shake = degrees(motion.shakeAngle),
+		rotation = degrees(motion.localRotation.Magnitude),
+		position = if working then motion.motionDistance else 0,
+		fatigue = if running then motion.fatigue else 0,
+		fovOffset = if working then motion.fovOffset else 0,
+	}
 end
 
 return Camera

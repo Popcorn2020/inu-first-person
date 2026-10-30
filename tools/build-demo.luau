@@ -1,8 +1,10 @@
 --!strict
 -- Builds the demo place, dist/InuFirstPersonDemo.rbxl: the module from
--- dist/InuFirstPerson.rbxm, the scripts in tools/demo, a panel, and a course
--- with steps, slopes, a sprint corridor, ladders and drops, a seat, a lift
--- and a tool. From the repo root, after building the rbxm:
+-- dist/InuFirstPerson.rbxm and its server half from
+-- dist/InuFirstPersonServer.rbxm, the scripts in tools/demo, a panel, setting
+-- sliders, a camera motion monitor, a third-person view of the player, and a
+-- course with steps, slopes, a sprint corridor, ladders and drops, a seat, a
+-- lift and a tool. From the repo root, after building both rbxms:
 --
 --     lune run tools/build-demo
 
@@ -22,6 +24,7 @@ local Font = roblox.Font
 
 local ROOT = process.cwd
 local MODULE = `{ROOT}/dist/InuFirstPerson.rbxm`
+local SERVER = `{ROOT}/dist/InuFirstPersonServer.rbxm`
 local OUTPUT = `{ROOT}/dist/InuFirstPersonDemo.rbxl`
 local SCRIPTS = `{ROOT}/tools/demo`
 
@@ -30,6 +33,12 @@ local STONE = Color3.fromRGB(150, 154, 160)
 local LIGHT = Color3.fromRGB(200, 203, 208)
 local ACCENT = Color3.fromRGB(232, 168, 56)
 local DARK = Color3.fromRGB(46, 49, 55)
+local PANEL = Color3.fromRGB(20, 22, 26)
+local BUTTON = Color3.fromRGB(62, 66, 74)
+local RAIL = Color3.fromRGB(70, 74, 82)
+local WHITE = Color3.fromRGB(255, 255, 255)
+local TEXT = Color3.fromRGB(230, 232, 236)
+local MUTED = Color3.fromRGB(196, 200, 207)
 local BUILDER_SANS = "rbxasset://fonts/families/BuilderSans.json"
 
 -- Instances come from Lune's untyped roblox library, so these helpers return
@@ -117,6 +126,12 @@ assert(
 	"dist/InuFirstPerson.rbxm holds the module"
 )
 module[1].Parent = replicatedStorage
+local server = roblox.deserializeModel(fs.readFile(SERVER))
+assert(
+	#server == 1 and server[1].Name == "InuFirstPersonServer",
+	"dist/InuFirstPersonServer.rbxm holds the server half"
+)
+server[1].Parent = serverScriptService
 new("RemoteEvent", { Name = "DemoRig" }, replicatedStorage)
 
 -- Scripts.
@@ -133,36 +148,45 @@ new(
 	serverScriptService
 )
 
--- The panel, kept in StarterGui so it shows in Edit.
+-- The demo's screen, kept in StarterGui so it shows in Edit; the scripts only
+-- fill it in. This is the layout for a mouse and keyboard. On a touch screen
+-- the scripts pick the touch one (DemoForm.luau): the panel and the sliders
+-- stack, and the motion monitor and the third-person view move to the top
+-- right, out of the bottom-left corner where the thumbstick sits.
 local panelGui = new("ScreenGui", {
 	Name = "DemoPanel",
 	ResetOnSpawn = false,
 	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 	ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets,
 }, starterGui)
-local panel = new("Frame", {
-	Name = "Panel",
-	AnchorPoint = Vector2.new(0, 0),
-	Position = UDim2.fromScale(0.01, 0.02),
-	Size = UDim2.fromOffset(260, 0),
-	AutomaticSize = Enum.AutomaticSize.Y,
-	BackgroundColor3 = Color3.fromRGB(20, 22, 26),
-	BackgroundTransparency = 0.25,
-}, panelGui)
-new("UICorner", { CornerRadius = UDim.new(0, 8) }, panel)
-new("UIPadding", {
-	PaddingTop = UDim.new(0, 10),
-	PaddingBottom = UDim.new(0, 10),
-	PaddingLeft = UDim.new(0, 12),
-	PaddingRight = UDim.new(0, 12),
-}, panel)
-new("UIListLayout", {
-	FillDirection = Enum.FillDirection.Vertical,
-	SortOrder = Enum.SortOrder.LayoutOrder,
-	Padding = UDim.new(0, 6),
-}, panel)
 
+local function card(parent: any, name: string, order: number, width: number)
+	local frame = new("Frame", {
+		Name = name,
+		LayoutOrder = order,
+		Size = UDim2.fromOffset(width, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundColor3 = PANEL,
+		BackgroundTransparency = 0.25,
+	}, parent)
+	new("UICorner", { CornerRadius = UDim.new(0, 8) }, frame)
+	new("UIPadding", {
+		PaddingTop = UDim.new(0, 10),
+		PaddingBottom = UDim.new(0, 10),
+		PaddingLeft = UDim.new(0, 12),
+		PaddingRight = UDim.new(0, 12),
+	}, frame)
+	new("UIListLayout", {
+		FillDirection = Enum.FillDirection.Vertical,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, 6),
+	}, frame)
+	return frame
+end
+
+-- A line of text that takes the card's width and wraps.
 local function label(
+	parent: any,
 	name: string,
 	order: number,
 	text: string,
@@ -182,11 +206,55 @@ local function label(
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextColor3 = color,
 		FontFace = Font.new(BUILDER_SANS, weight),
-	}, panel)
+	}, parent)
 end
 
-label("Title", 1, "InuFirstPerson demo", 16, Enum.FontWeight.Bold, Color3.fromRGB(255, 255, 255))
-label("Stats", 2, "- fps", 14, Enum.FontWeight.Medium, Color3.fromRGB(230, 232, 236))
+-- A text in a cell of a row, placed by `properties`.
+local function cell(parent: any, properties: { [string]: any })
+	local merged: { [string]: any } = {
+		BackgroundTransparency = 1,
+		TextSize = 12,
+		TextColor3 = TEXT,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		FontFace = Font.new(BUILDER_SANS, Enum.FontWeight.Medium),
+	}
+	for key, value in properties do
+		merged[key] = value
+	end
+	return new("TextLabel", merged, parent)
+end
+
+local function button(parent: any, name: string, order: number, text: string, width: number)
+	local made = new("TextButton", {
+		Name = name,
+		LayoutOrder = order,
+		Size = UDim2.new(0, width, 1, 0),
+		BackgroundColor3 = BUTTON,
+		Text = text,
+		TextSize = 14,
+		TextColor3 = WHITE,
+		FontFace = Font.new(BUILDER_SANS, Enum.FontWeight.Bold),
+	}, parent)
+	new("UICorner", { CornerRadius = UDim.new(0, 6) }, made)
+	return made
+end
+
+-- The left of the screen: the panel, and the sliders beside it.
+local left = new("Frame", {
+	Name = "Left",
+	Position = UDim2.fromScale(0.01, 0.02),
+	AutomaticSize = Enum.AutomaticSize.XY,
+	BackgroundTransparency = 1,
+}, panelGui)
+new("UIListLayout", {
+	FillDirection = Enum.FillDirection.Horizontal,
+	SortOrder = Enum.SortOrder.LayoutOrder,
+	Padding = UDim.new(0, 8),
+}, left)
+
+local panel = card(left, "Panel", 1, 260)
+label(panel, "Title", 1, "InuFirstPerson demo", 16, Enum.FontWeight.Bold, WHITE)
+label(panel, "Stats", 2, "- fps", 14, Enum.FontWeight.Medium, TEXT)
 local rigs = new("Frame", {
 	Name = "Rigs",
 	LayoutOrder = 3,
@@ -199,27 +267,312 @@ new("UIListLayout", {
 	Padding = UDim.new(0, 6),
 }, rigs)
 for order, name in { "R15", "R6" } do
-	local button = new("TextButton", {
-		Name = name,
-		LayoutOrder = order,
-		Size = UDim2.new(0, 64, 1, 0),
-		BackgroundColor3 = Color3.fromRGB(62, 66, 74),
-		Text = name,
-		TextSize = 14,
-		TextColor3 = Color3.fromRGB(255, 255, 255),
-		FontFace = Font.new(BUILDER_SANS, Enum.FontWeight.Bold),
-	}, rigs)
-	new("UICorner", { CornerRadius = UDim.new(0, 6) }, button)
+	button(rigs, name, order, name, 64)
 end
 label(
+	panel,
 	"Help",
 	4,
-	"Shift, L3 or RUN: sprint\nMouse wheel or pinch: third person\nF: kick the camera\nThe tool in the backpack shows the arm holding it",
+	"Shift, L3 or RUN: sprint\nMouse wheel or pinch: third person\nF: kick the camera\nHold Alt: a cursor for the buttons and sliders\nThe tool in the backpack shows the arm holding it",
 	13,
 	Enum.FontWeight.Regular,
-	Color3.fromRGB(196, 200, 207)
+	MUTED
 )
 new("LocalScript", { Name = "PanelScript", Source = readScript("DemoPanel.client.luau") }, panelGui)
+new("ModuleScript", { Name = "DemoForm", Source = readScript("DemoForm.luau") }, panelGui)
+-- Shown while Alt is held or a slider is held: a visible Modal button frees
+-- the mouse that first person locks to the middle of the screen.
+new("TextButton", {
+	Name = "Cursor",
+	Modal = true,
+	Visible = false,
+	Size = UDim2.fromOffset(0, 0),
+	BackgroundTransparency = 1,
+	Text = "",
+}, panelGui)
+
+-- The sliders. Each changes one setting while the demo runs, and the script
+-- puts the setting's default, read from the module, in the middle. The ends
+-- sit the same distance either side: from `low` (0 unless the setting has a
+-- floor) to twice the default less `low`.
+local SLIDERS: { { group: string, key: string, low: number? } } = {
+	{ group = "camera", key = "motionScale" },
+	{ group = "camera", key = "eyeHeight" },
+	{ group = "camera", key = "eyeForward" },
+	{ group = "look", key = "headPitchShare", low = 0.2 },
+	{ group = "look", key = "turnThreshold" },
+	{ group = "look", key = "turnTime" },
+	{ group = "look", key = "toolAimLag" },
+	{ group = "kick", key = "settleShare" },
+	{ group = "kick", key = "shake" },
+	{ group = "sway", key = "tiredScale", low = 1 },
+	{ group = "breathing", key = "tiredPitchDegrees" },
+	{ group = "sprint", key = "runMultiplier", low = 1 },
+	{ group = "sprintFov", key = "degrees" },
+}
+local RAIL_HEIGHT = 4
+
+local tuning = card(left, "Tuning", 2, 340)
+local header = new("Frame", {
+	Name = "Header",
+	LayoutOrder = 1,
+	Size = UDim2.new(1, 0, 0, 28),
+	BackgroundTransparency = 1,
+}, tuning)
+cell(header, {
+	Name = "Title",
+	Size = UDim2.fromScale(0.5, 1),
+	Text = "Settings",
+	TextSize = 16,
+	TextColor3 = WHITE,
+	FontFace = Font.new(BUILDER_SANS, Enum.FontWeight.Bold),
+})
+local headerButtons = new("Frame", {
+	Name = "Buttons",
+	AnchorPoint = Vector2.new(1, 0),
+	Position = UDim2.fromScale(1, 0),
+	Size = UDim2.fromScale(0.5, 1),
+	BackgroundTransparency = 1,
+}, header)
+new("UIListLayout", {
+	FillDirection = Enum.FillDirection.Horizontal,
+	HorizontalAlignment = Enum.HorizontalAlignment.Right,
+	SortOrder = Enum.SortOrder.LayoutOrder,
+	Padding = UDim.new(0, 6),
+}, headerButtons)
+button(headerButtons, "Toggle", 1, "Hide", 56)
+button(headerButtons, "Reset", 2, "Reset", 56)
+
+local sliderRows = new("Frame", {
+	Name = "Rows",
+	LayoutOrder = 2,
+	Size = UDim2.new(1, 0, 0, 0),
+	AutomaticSize = Enum.AutomaticSize.Y,
+	BackgroundTransparency = 1,
+}, tuning)
+new("UIListLayout", {
+	FillDirection = Enum.FillDirection.Vertical,
+	SortOrder = Enum.SortOrder.LayoutOrder,
+}, sliderRows)
+for order, slider in SLIDERS do
+	local name = `{slider.group}.{slider.key}`
+	local row = new("Frame", {
+		Name = name,
+		LayoutOrder = order,
+		Size = UDim2.new(1, 0, 0, 24),
+		BackgroundTransparency = 1,
+	}, sliderRows)
+	row:SetAttribute("Group", slider.group)
+	row:SetAttribute("Key", slider.key)
+	row:SetAttribute("Low", slider.low or 0)
+	cell(row, {
+		Name = "Name",
+		Size = UDim2.fromScale(0.52, 1),
+		Text = name,
+		TextColor3 = MUTED,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+	})
+	-- The whole row's height takes the drag, for fingers.
+	local track = new("TextButton", {
+		Name = "Track",
+		Position = UDim2.fromScale(0.53, 0),
+		Size = UDim2.fromScale(0.33, 1),
+		BackgroundTransparency = 1,
+		AutoButtonColor = false,
+		Text = "",
+	}, row)
+	new("Frame", {
+		Name = "Rail",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.fromScale(0, 0.5),
+		Size = UDim2.new(1, 0, 0, RAIL_HEIGHT),
+		BackgroundColor3 = RAIL,
+		BorderSizePixel = 0,
+	}, track)
+	new("Frame", {
+		Name = "Middle",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(2, 12),
+		BackgroundColor3 = MUTED,
+		BorderSizePixel = 0,
+	}, track)
+	-- From the middle to the knob, so a changed setting stands out.
+	new("Frame", {
+		Name = "Fill",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.new(0, 0, 0, RAIL_HEIGHT),
+		BackgroundColor3 = ACCENT,
+		BorderSizePixel = 0,
+	}, track)
+	local knob = new("Frame", {
+		Name = "Knob",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(12, 12),
+		BackgroundColor3 = WHITE,
+		BorderSizePixel = 0,
+		ZIndex = 2,
+	}, track)
+	new("UICorner", { CornerRadius = UDim.new(0.5, 0) }, knob)
+	cell(row, {
+		Name = "Value",
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.fromScale(1, 0),
+		Size = UDim2.fromScale(0.13, 1),
+		Text = "-",
+		TextXAlignment = Enum.TextXAlignment.Right,
+	})
+end
+new(
+	"LocalScript",
+	{ Name = "TuningScript", Source = readScript("DemoTuning.client.luau") },
+	panelGui
+)
+
+-- The camera motion monitor, at the middle of the right edge, clear of the
+-- player list. `full` is the value that fills a bar; bars of angles and
+-- distances grow with the square root, so small motions still show.
+type MotionRow = { field: string, label: string?, format: string, full: number, linear: boolean? }
+local MOTION_ROWS: { MotionRow } = {
+	{ field = "bob", format = "%.2f°", full = 4 },
+	{ field = "sway", format = "%.2f°", full = 4 },
+	{ field = "breath", format = "%.2f°", full = 4 },
+	{ field = "tilt", format = "%.2f°", full = 4 },
+	{ field = "landing", format = "%.2f°", full = 4 },
+	{ field = "kick", format = "%.2f°", full = 4 },
+	{ field = "shake", format = "%.2f°", full = 4 },
+	{ field = "rotation", format = "%.2f°", full = 4 },
+	{ field = "position", format = "%.3f st", full = 0.4 },
+	{ field = "fatigue", format = "%.2f", full = 1, linear = true },
+	{ field = "fovOffset", label = "fov", format = "%+.1f°", full = 10, linear = true },
+}
+-- The rows from here on are totals and state, set apart by a line.
+local MOTION_TOTALS_FROM = "rotation"
+
+local motion = card(panelGui, "Motion", 1, 200)
+motion.AnchorPoint = Vector2.new(1, 0.5)
+motion.Position = UDim2.fromScale(0.99, 0.5)
+label(motion, "Title", 1, "Camera motion", 14, Enum.FontWeight.Bold, WHITE)
+local motionRows = new("Frame", {
+	Name = "Rows",
+	LayoutOrder = 2,
+	Size = UDim2.new(1, 0, 0, 0),
+	AutomaticSize = Enum.AutomaticSize.Y,
+	BackgroundTransparency = 1,
+}, motion)
+new("UIListLayout", {
+	FillDirection = Enum.FillDirection.Vertical,
+	SortOrder = Enum.SortOrder.LayoutOrder,
+	Padding = UDim.new(0, 2),
+}, motionRows)
+for order, row in MOTION_ROWS do
+	if row.field == MOTION_TOTALS_FROM then
+		new("Frame", {
+			Name = "Line",
+			LayoutOrder = order * 2 - 1,
+			Size = UDim2.new(1, 0, 0, 1),
+			BackgroundColor3 = RAIL,
+			BorderSizePixel = 0,
+		}, motionRows)
+	end
+	local frame = new("Frame", {
+		Name = row.field,
+		LayoutOrder = order * 2,
+		Size = UDim2.new(1, 0, 0, 16),
+		BackgroundTransparency = 1,
+	}, motionRows)
+	frame:SetAttribute("Field", row.field)
+	frame:SetAttribute("Format", row.format)
+	frame:SetAttribute("Full", row.full)
+	frame:SetAttribute("Linear", row.linear == true)
+	cell(frame, {
+		Name = "Name",
+		Size = UDim2.fromScale(0.34, 1),
+		Text = row.label or row.field,
+		TextColor3 = MUTED,
+	})
+	cell(frame, {
+		Name = "Value",
+		Position = UDim2.fromScale(0.34, 0),
+		Size = UDim2.fromScale(0.3, 1),
+		Text = "-",
+		TextXAlignment = Enum.TextXAlignment.Right,
+	})
+	local bar = new("Frame", {
+		Name = "Bar",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.fromScale(0.68, 0.5),
+		Size = UDim2.new(0.32, 0, 0, 6),
+		BackgroundColor3 = RAIL,
+		BorderSizePixel = 0,
+	}, frame)
+	new("Frame", {
+		Name = "Fill",
+		Size = UDim2.fromScale(0, 1),
+		BackgroundColor3 = ACCENT,
+		BorderSizePixel = 0,
+	}, bar)
+end
+new(
+	"LocalScript",
+	{ Name = "MotionScript", Source = readScript("DemoMotion.client.luau") },
+	panelGui
+)
+
+-- The third-person view: 0.3 of the screen's height at the bottom left. On a
+-- touch screen the script moves it into TouchSlot, beside the motion monitor.
+local viewSlot = new("Frame", {
+	Name = "ViewSlot",
+	AnchorPoint = Vector2.new(0, 1),
+	Position = UDim2.fromScale(0.01, 0.98),
+	Size = UDim2.fromScale(0.5, 0.3),
+	BackgroundTransparency = 1,
+}, panelGui)
+local touchSlot = new("Frame", {
+	Name = "TouchSlot",
+	AnchorPoint = Vector2.new(1, 0),
+	Position = UDim2.fromScale(0.99, 0.02),
+	Size = UDim2.fromScale(0.6, 0.4),
+	BackgroundTransparency = 1,
+}, panelGui)
+new("UIListLayout", {
+	FillDirection = Enum.FillDirection.Horizontal,
+	HorizontalAlignment = Enum.HorizontalAlignment.Right,
+	VerticalAlignment = Enum.VerticalAlignment.Top,
+	SortOrder = Enum.SortOrder.LayoutOrder,
+	Padding = UDim.new(0, 8),
+}, touchSlot)
+local view = new("ViewportFrame", {
+	Name = "ThirdPerson",
+	LayoutOrder = 2,
+	Size = UDim2.fromScale(1, 1),
+	BackgroundColor3 = PANEL,
+	BackgroundTransparency = 0.25,
+	Ambient = Color3.fromRGB(150, 150, 150),
+	LightColor = Color3.fromRGB(255, 255, 255),
+	-- From above and behind the view's camera, so the side it sees is lit.
+	LightDirection = Vector3.new(-0.4, -1, 0.8),
+}, viewSlot)
+new("UIAspectRatioConstraint", { AspectRatio = 0.8 }, view)
+new("UICorner", { CornerRadius = UDim.new(0, 8) }, view)
+new("UIPadding", {
+	PaddingTop = UDim.new(0, 6),
+	PaddingLeft = UDim.new(0, 8),
+}, view)
+new("WorldModel", { Name = "World" }, view)
+cell(view, {
+	Name = "Caption",
+	Size = UDim2.new(1, 0, 0, 14),
+	Text = "As others see you",
+	TextColor3 = MUTED,
+})
+new(
+	"LocalScript",
+	{ Name = "ThirdPersonScript", Source = readScript("DemoThirdPerson.client.luau") },
+	panelGui
+)
 
 -- A tool, to see the arm that holds it.
 local tool = new("Tool", { Name = "Stick", CanBeDropped = false }, starterPack)

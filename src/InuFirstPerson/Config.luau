@@ -1,6 +1,7 @@
 --!strict
 -- Every setting, with its default. A game changes them by passing a table of
--- overrides to InuFirstPerson.start; only the keys it names change, so
+-- overrides to InuFirstPerson.start (or, while running, to
+-- InuFirstPerson.configure); only the keys it names change, so
 -- `{ sprint = { runMultiplier = 1.4 } }` leaves the rest as below. A key that
 -- does not exist here, or a value of the wrong type, is an error, so a typo
 -- shows up when the game starts instead of silently doing nothing.
@@ -8,6 +9,8 @@
 -- Units: distances in studs, speeds in studs per second, times in seconds,
 -- angles in degrees. A "response time" is a time constant: the gap to the
 -- target shrinks to about a third every response time, and 0 snaps at once.
+
+local SyncProtocol = require(script.Parent.SyncProtocol)
 
 local DEFAULTS = {
 	camera = {
@@ -17,11 +20,12 @@ local DEFAULTS = {
 		-- camera mode and zoom to the game. "start" leaves Player.CameraMode as
 		-- the game set it; "lock" puts the old mode back on stop.
 		--
-		-- In third person the body copy stops and hides and the walking motion
-		-- (bob, tilt, sway, breathing, landing, step smoothing) is off, since the
-		-- real character shows and the camera orbits it. Field of view offsets,
-		-- kicks, sprinting and stamina carry on. A Scriptable camera, or one on
-		-- another subject, gets no motion, kicks or offsets at all.
+		-- In third person the walking motion (bob, tilt, sway, breathing,
+		-- landing, step smoothing) and the eye are off, and the character turns
+		-- as the Humanoid turns it, since the camera orbits it. Field of view
+		-- offsets, kicks, the look of the head, sprinting and stamina carry on.
+		-- A Scriptable camera, or one on another subject, gets no motion, kicks
+		-- or offsets at all.
 		firstPerson = "start" :: "start" | "lock" | "keep",
 		-- How quickly the walking motion fades back in after zooming into first
 		-- person.
@@ -35,6 +39,14 @@ local DEFAULTS = {
 		reducedMotionScale = 0.5,
 		-- Extra multiplier in VR. 0 keeps the view still against motion sickness.
 		vrScale = 0,
+		-- Where the eye sits in first person: this far above the neck joint and
+		-- this far in front of it, for a standard avatar (both scale with it).
+		-- Looking ahead, that is about where the default camera puts the eye.
+		-- The eye turns about the neck with the head (look.headPitchShare), so
+		-- looking down it moves out over the chest and the body below is in
+		-- view.
+		eyeHeight = 0.6,
+		eyeForward = 0.3,
 	},
 
 	-- The head's rise and fall and side to side sway while walking.
@@ -141,30 +153,85 @@ local DEFAULTS = {
 		responseTime = 0.2,
 	},
 
-	-- The springs that carry InuFirstPerson.camera.kick.
+	-- InuFirstPerson.camera.kick: a quick snap with a slow settle under it,
+	-- and a fine shake that dies away.
 	kick = {
-		frequency = 5,
-		damping = 0.6,
+		-- The snap: a stiff spring that throws the view out and swings back a
+		-- little past rest. Cycles per second, and damping (1 settles without
+		-- overshoot, lower swings past more).
+		frequency = 6,
+		damping = 0.45,
+		-- Share of each kick carried instead by a slow spring that eases the
+		-- view back after the snap, the tail of the kick.
+		settleShare = 0.35,
+		settleFrequency = 1.4,
+		settleDamping = 1,
+		-- How much each kick shakes the view: at 1, a kick of 10 degrees shakes
+		-- it fully. 0 turns the shake off.
+		shake = 1,
+		-- The shake at full, in degrees: X pitch, Y yaw, Z roll.
+		shakeDegrees = Vector3.new(0.45, 0.45, 0.7),
+		-- Cycles per second of the shake's noise.
+		shakeFrequency = 16,
+		-- A full shake dies away in 1 / shakeDecay seconds. It fades as the
+		-- square of what is left, so the end is soft.
+		shakeDecay = 1.2,
+		-- Each kick's yaw and roll vary by up to this share of its size, so
+		-- repeated kicks differ. Changing the seed changes how.
+		variation = 0.3,
+		seed = 0,
 	},
 
-	-- The player's own body, seen when looking down.
+	-- The player's own body in first person.
 	body = {
+		-- Shows the real character, all but the head and what is worn on it,
+		-- which the default camera hides in first person.
 		enabled = true,
-		-- Where the body sits from the character's root, in the camera's facing
-		-- (X right, Y up, Z back), for a root 2 studs tall; it scales with the
-		-- avatar. Pushing the body back keeps the camera out of the chest.
-		offset = Vector3.new(0, 0.15, 1.25),
-		-- The body trails fast camera turns by about this long. 0 turns with the
-		-- camera exactly.
-		turnLag = 0.07,
-		-- The most the body can trail behind the camera.
-		maxTurnLag = 10,
-		-- While a Tool is held, draws the right arm where the real arm is, so
-		-- the hand meets the tool, which first person shows at the real hand.
-		toolArm = true,
-		-- The copy is rebuilt once the character has had no visible parts added
-		-- or removed for this long, since appearances load over several frames.
-		rebuildDelay = 0.15,
+	},
+
+	-- Where each character looks: the head, waist and right arm turn toward
+	-- the player's view on top of the animation, and in first person the
+	-- character turns with the view.
+	look = {
+		enabled = true,
+		-- Standing still in first person, the feet stay put until the view
+		-- turns this far from them; then the body swings round to the view.
+		turnThreshold = 50,
+		-- How long the body takes to swing round to the view, standing or on
+		-- starting to move. Moving or holding a Tool, it then turns with the
+		-- view exactly, so the body and the tool never trail the camera.
+		turnTime = 0.12,
+		-- The head turns at most this far from the body. Past it, a standing
+		-- body is pulled round; a seated or climbing one stays and the head
+		-- stops.
+		neckYawLimit = 70,
+		-- Share of the view's tilt up and down that the head takes; the eyes
+		-- take the rest, as people's do. The first-person eye moves with the
+		-- head, so this also sets how far it swings out when looking down.
+		headPitchShare = 0.6,
+		-- Share of the head's turn and tilt the waist takes, the neck taking the
+		-- rest (R6 has no waist, so its neck takes all). The player's own view
+		-- never bends the waist forward or back, which would push the chest
+		-- into the eye; the others see it.
+		waistShare = 0.3,
+		-- While a Tool is held, the right arm aims it where the player looks.
+		toolAim = true,
+		-- The arm trails the view by about this long, so the tool swings a
+		-- little behind fast turns while the sway, bob and kicks move the view
+		-- around it.
+		toolAimLag = 0.05,
+	},
+
+	-- Sends where each player looks to the others, so they see the heads and
+	-- arms turn. It needs the server half started (see the README); without
+	-- it, each player sees only their own.
+	sync = {
+		enabled = true,
+		-- At most this many updates a second, only while the angles change. The
+		-- server takes up to 30.
+		sendRate = 12,
+		-- How quickly another player's head follows their updates.
+		smoothTime = 0.1,
 	},
 
 	sprint = {
@@ -264,7 +331,16 @@ local INSTANCE_SETTINGS: { [string]: string } = {
 -- Numbers that may be negative. Every other number must be 0 or more.
 local SIGNED_SETTINGS: { [string]: true } = {
 	["sway.seed"] = true,
+	["kick.seed"] = true,
 	["input.priority"] = true,
+}
+-- Numbers with an upper bound.
+local MAXIMUMS: { [string]: number } = {
+	["kick.settleShare"] = 1,
+	["look.neckYawLimit"] = 180,
+	["look.headPitchShare"] = 1,
+	["look.waistShare"] = 1,
+	["sync.sendRate"] = SyncProtocol.MAX_SEND_RATE,
 }
 
 local Config = {}
@@ -293,6 +369,10 @@ local function checkLeaf(path: string, default: any, value: any)
 		if value < 0 and not SIGNED_SETTINGS[path] then
 			fail(path, "takes 0 or more")
 		end
+		local maximum = MAXIMUMS[path]
+		if maximum and value > maximum then
+			fail(path, `takes {maximum} or less`)
+		end
 	elseif expected == "string" then
 		local choices = CHOICES[path]
 		if choices and not table.find(choices, value) then
@@ -309,12 +389,15 @@ local function isList(value: { [any]: any }): boolean
 	return #value > 0
 end
 
+-- `base` (the defaults, or the settings in use) with `overrides` merged in.
+-- Types are checked against the defaults, whose lists are never empty.
 local function merge(
 	path: string,
 	defaults: { [string]: any },
+	base: { [string]: any },
 	overrides: { [any]: any }
 ): { [string]: any }
-	local result = table.clone(defaults)
+	local result = table.clone(base)
 	for key, value in overrides do
 		local keyPath = if path == "" then tostring(key) else `{path}.{key}`
 		local default = if typeof(key) == "string" then defaults[key] else nil
@@ -336,7 +419,7 @@ local function merge(
 			end
 			result[key] = table.clone(value)
 		else
-			result[key] = merge(keyPath, default, value)
+			result[key] = merge(keyPath, default, base[key], value)
 		end
 	end
 	return result
@@ -351,13 +434,14 @@ local function deepFreeze(value: { [any]: any })
 	table.freeze(value)
 end
 
--- The defaults with `overrides` merged in, frozen. Errors on an unknown key
--- or a value of the wrong type.
-function Config.resolve(overrides: { [any]: any }?): Config
+-- `base` (the defaults if nil) with `overrides` merged in, frozen. Errors on
+-- an unknown key or a value of the wrong type; `caller` names the function in
+-- the error for a value that is not a table.
+function Config.resolve(overrides: { [any]: any }?, base: Config?, caller: string?): Config
 	if overrides ~= nil and typeof(overrides) ~= "table" then
-		error("InuFirstPerson: start takes a table of settings or nothing", 0)
+		error(`InuFirstPerson: {caller or "start"} takes a table of settings`, 0)
 	end
-	local resolved = merge("", DEFAULTS :: any, overrides or {})
+	local resolved = merge("", DEFAULTS :: any, (base or DEFAULTS) :: any, overrides or {})
 	deepFreeze(resolved)
 	return (resolved :: any) :: Config
 end

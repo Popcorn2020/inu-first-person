@@ -2,6 +2,34 @@
 
 What each version of InuFirstPerson changed. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/): a major version for changes a game has to adapt to (a setting or function renamed or removed, a behavior that changes by itself), a minor one for additions, a patch for fixes. Changed defaults are listed under Changed, since games that keep the defaults will feel them.
 
+## [2.0.0] - 2026-10-30
+
+### Changed
+
+- The player's own body is the real character, shown in first person but for the head and what is worn on it, instead of a copy behind the camera. Sitting, climbing, a held Tool, emotes and vehicles show as they are.
+- In first person the camera sits at the eye, in front of the neck, and swings with it (`camera.eyeHeight`, `camera.eyeForward`).
+- In first person, while standing, walking, jumping or falling, the module turns `Humanoid.AutoRotate` off and turns the character with the view itself, in the same frame as the camera. Standing still, the feet stay until the view turns past `look.turnThreshold`. A game that turned AutoRotate off keeps the facing.
+- Kicks snap, then settle slowly, and shake a little; repeated kicks vary in yaw and roll. `kick.frequency` is 6 (was 5) and `kick.damping` 0.45 (was 0.6).
+- `camera.getLayer` also leaves out the move to the eye.
+
+### Added
+
+- The heads, waists and right arms of every character turn toward where that player looks, on top of the animation, and a held Tool tilts with the view (`look`).
+- The server half, `InuFirstPersonServer`, which passes each player's look on to the others (`sync`).
+- `configure`, to change settings while running.
+- `camera.getMotion`, how much each part of the camera motion moves the view.
+- `look.setEnabled`, `look.isEnabled`, `look.getAngles` and `look.setPoseCallback`.
+- Settings: `camera.eyeHeight`, `camera.eyeForward`, `look.headPitchShare`, `kick.settleShare`, `kick.settleFrequency`, `kick.settleDamping`, `kick.shake`, `kick.shakeDegrees`, `kick.shakeFrequency`, `kick.shakeDecay`, `kick.variation`, `kick.seed`, and the groups `look` and `sync`.
+
+### Removed
+
+- `body.getModel`, `body.rebuild` and `body.setPoseCallback`, and the settings `body.offset`, `body.turnLag`, `body.maxTurnLag`, `body.toolArm` and `body.rebuildDelay`, since there is no body copy any more.
+
+### Fixed
+
+- Sitting or otherwise stopping no longer leaves the body behind the view.
+- The body no longer trails the camera in jerks while a Tool is held.
+
 ## [1.0.0] - 2026-10-30
 
 ### Added

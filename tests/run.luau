@@ -10,7 +10,9 @@ local load = require("./loader")
 local cases = {
 	require("./cases/math"),
 	require("./cases/stamina"),
-	require("./cases/turn-lag"),
+	require("./cases/turn"),
+	require("./cases/sync-protocol"),
+	require("./cases/kick"),
 	require("./cases/config"),
 	require("./cases/camera-motion"),
 }

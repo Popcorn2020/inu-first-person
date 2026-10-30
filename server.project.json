@@ -1,0 +1,12 @@
+{
+  "name": "InuFirstPersonServer",
+  "tree": {
+    "$path": "src/InuFirstPersonServer",
+    "SyncProtocol": {
+      "$path": "src/InuFirstPerson/SyncProtocol.luau"
+    },
+    "Version": {
+      "$path": "src/InuFirstPerson/Version.luau"
+    }
+  }
+}

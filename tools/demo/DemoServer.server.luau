@@ -1,9 +1,11 @@
 --!strict
--- The demo's server side: rebuilds a player's character as R15 or R6 when
--- the panel asks, and moves the lift up and down.
+-- The demo's server side: starts InuFirstPerson's server half, rebuilds a
+-- player's character as R15 or R6 when the panel asks, and moves the lift
+-- up and down.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
 
 local LIFT_HEIGHTS = { 0, 16 }
 local LIFT_WAIT = 5
@@ -15,6 +17,10 @@ local RIG_TYPES: { [string]: Enum.HumanoidRigType } = {
 
 -- The demo place is built by tools/build-demo.luau, so its Instances are not
 -- on disk for the type checker; each is narrowed where it is taken.
+local InuFirstPersonServer =
+	require(ServerScriptService:FindFirstChild("InuFirstPersonServer") :: ModuleScript)
+InuFirstPersonServer.start(ReplicatedStorage:FindFirstChild("InuFirstPerson") :: ModuleScript)
+
 local rigRemote = ReplicatedStorage:FindFirstChild("DemoRig") :: RemoteEvent
 local lift = workspace:FindFirstChild("Lift") :: Model
 local base = lift:FindFirstChild("Base") :: BasePart

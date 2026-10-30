@@ -15,7 +15,8 @@ local InuFirstPerson = require(module)
 local STATS_PERIOD = 0.5
 
 local rigRemote = ReplicatedStorage:FindFirstChild("DemoRig") :: RemoteEvent
-local panel = (script.Parent :: Instance):FindFirstChild("Panel") :: Frame
+local left = (script.Parent :: Instance):FindFirstChild("Left") :: Frame
+local panel = left:FindFirstChild("Panel") :: Frame
 local stats = panel:FindFirstChild("Stats") :: TextLabel
 local rigs = panel:FindFirstChild("Rigs") :: Frame
 local random = Random.new()
