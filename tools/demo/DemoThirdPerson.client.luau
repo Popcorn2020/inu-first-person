@@ -21,14 +21,14 @@ local world = view:FindFirstChild("World") :: WorldModel
 -- reaches the PlayerGui copy.
 local viewCamera = Instance.new("Camera")
 viewCamera.Name = "Camera"
-viewCamera.FieldOfView = 40
+viewCamera.FieldOfView = 44
 viewCamera.Parent = view
 
 local STEP_NAME = "InuFirstPersonDemoThirdPerson"
 -- In front of the spawn's facing (-Z), to the right and above.
 local CAMERA_OFFSET = Vector3.new(5, 3.5, -10)
--- The root sits a little above the middle of the body.
-local FOCUS_DROP = 0.4
+-- Above the root, so the figure, hat and all, sits below the caption.
+local FOCUS_RISE = 0.9
 -- An avatar loads part by part; the copy is made once the changes stop.
 local REBUILD_QUIET = 0.1
 
@@ -267,6 +267,6 @@ RunService:BindToRenderStep(STEP_NAME, Enum.RenderPriority.Last.Value, function(
 		targetCFrames[index] = part.CFrame
 	end
 	world:BulkMoveTo(copyParts, targetCFrames, Enum.BulkMoveMode.FireCFrameChanged)
-	local focus = currentRoot.Position - Vector3.new(0, FOCUS_DROP, 0)
+	local focus = currentRoot.Position + Vector3.new(0, FOCUS_RISE, 0)
 	viewCamera.CFrame = CFrame.lookAt(focus + CAMERA_OFFSET, focus)
 end)

@@ -521,13 +521,13 @@ new(
 	panelGui
 )
 
--- The third-person view: 0.3 of the screen's height at the bottom left. On a
+-- The third-person view: 0.42 of the screen's height at the bottom left. On a
 -- touch screen the script moves it into TouchSlot, beside the motion monitor.
 local viewSlot = new("Frame", {
 	Name = "ViewSlot",
 	AnchorPoint = Vector2.new(0, 1),
 	Position = UDim2.fromScale(0.01, 0.98),
-	Size = UDim2.fromScale(0.5, 0.3),
+	Size = UDim2.fromScale(0.5, 0.42),
 	BackgroundTransparency = 1,
 }, panelGui)
 local touchSlot = new("Frame", {
