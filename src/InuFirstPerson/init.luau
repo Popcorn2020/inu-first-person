@@ -7,8 +7,8 @@
 --     local InuFirstPerson = require(ReplicatedStorage.InuFirstPerson)
 --     InuFirstPerson.start({ sprint = { runMultiplier = 1.5 } })
 --
--- The README lists every setting (Config.luau has them with their defaults)
--- and every function below.
+-- Config.luau lists every setting with its default; the functions below are
+-- the whole API.
 
 local RunService = game:GetService("RunService")
 
@@ -103,7 +103,8 @@ function InuFirstPerson.start(overrides: { [any]: any }?)
 end
 
 -- Stops everything and puts back what start changed (camera mode, zoom,
--- field of view, walking speed). What the functions below set is cleared.
+-- field of view); the character keeps walking at its walking speed, without
+-- sprinting or multipliers. What the functions below set is cleared.
 function InuFirstPerson.stop()
 	if not running then
 		return
@@ -134,7 +135,7 @@ end
 
 InuFirstPerson.camera = {
 	-- Fires with true on zooming into first person and false on leaving it.
-	FirstPersonChanged = Shared.signals.firstPersonChanged,
+	FirstPersonChanged = Shared.signals.firstPersonChanged.event,
 
 	-- Turns the camera motion off and on. The camera mode stays as it is.
 	setEnabled = function(enabled: boolean)
@@ -223,7 +224,7 @@ InuFirstPerson.body = {
 
 InuFirstPerson.sprint = {
 	-- Fires with true when sprinting starts and false when it stops.
-	Changed = Shared.signals.sprintingChanged,
+	Changed = Shared.signals.sprintingChanged.event,
 
 	-- Allows sprinting or not. Stamina keeps refilling while it is off.
 	setEnabled = function(enabled: boolean)
@@ -262,9 +263,9 @@ InuFirstPerson.sprint = {
 
 InuFirstPerson.stamina = {
 	-- Fires with (value, max) whenever stamina changes.
-	Changed = Shared.signals.staminaChanged,
+	Changed = Shared.signals.staminaChanged.event,
 	-- Fires with true on running out and false once sprinting is allowed again.
-	ExhaustedChanged = Shared.signals.exhaustedChanged,
+	ExhaustedChanged = Shared.signals.exhaustedChanged.event,
 
 	get = function(): number
 		return if running then Sprint.getStamina() else Shared.config.stamina.max

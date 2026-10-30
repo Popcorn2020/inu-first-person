@@ -222,9 +222,12 @@ local DEFAULTS = {
 
 	ui = {
 		enabled = true,
-		-- A ScreenGui to use instead of the bundled one. It needs the same
-		-- named children as Assets.InuFirstPersonUi (see the README). false
-		-- uses the bundled one.
+		-- A ScreenGui to use instead of the bundled one, laid out like
+		-- Assets.InuFirstPersonUi: a Frame named Gauge holding a Frame named
+		-- Fill (whose ExhaustedColor attribute, if any, colors it while
+		-- exhausted), and optionally a GuiButton named SprintButton. Keep it out
+		-- of StarterGui, which would show a second copy. false uses the bundled
+		-- one.
 		template = false :: ScreenGui | false,
 		-- The sprint button for touch screens: "auto" shows it while touch is
 		-- the player's preferred input, "always" and "never" do what they say.

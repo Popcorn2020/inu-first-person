@@ -158,8 +158,8 @@ local function step(rawDt: number)
 		then
 			warnedController = true
 			warn(
-				"InuFirstPerson: this character uses a ControllerManager (Character Controller Library). "
-					.. "Sprinting writes Humanoid.WalkSpeed; see the README for whether it moves this character."
+				"InuFirstPerson: this character has a ControllerManager (Character Controller Library); "
+					.. "sprinting writes Humanoid.WalkSpeed, which may not move it."
 			)
 		end
 	end
@@ -231,6 +231,9 @@ function Sprint.stop()
 	if rig then
 		rig.humanoid.WalkSpeed = getBaseWalkSpeed()
 	end
+	walkSpeedOverride = nil
+	table.clear(multipliers)
+	multiplierProduct = 1
 	setSprinting(false)
 	lastRig = nil
 	Shared.fatigue = 0

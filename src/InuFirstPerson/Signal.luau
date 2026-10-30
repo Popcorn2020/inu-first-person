@@ -9,11 +9,18 @@ export type Connection = {
 	Disconnect: (self: Connection) -> (),
 }
 
+-- What the API hands out: the shape of a Roblox event, without Fire, so only
+-- this module fires its events.
+export type Event<T...> = {
+	Connect: (self: Event<T...>, handler: (T...) -> ()) -> Connection,
+	Once: (self: Event<T...>, handler: (T...) -> ()) -> Connection,
+	-- Yields until the next fire and returns what was fired.
+	Wait: (self: Event<T...>) -> T...,
+}
+
 export type Signal<T...> = {
-	Connect: (self: Signal<T...>, handler: (T...) -> ()) -> Connection,
-	Once: (self: Signal<T...>, handler: (T...) -> ()) -> Connection,
+	event: Event<T...>,
 	Fire: (self: Signal<T...>, T...) -> (),
-	DisconnectAll: (self: Signal<T...>) -> (),
 }
 
 type Entry = {
@@ -67,15 +74,25 @@ end
 
 function Signal.new<T...>(): Signal<T...>
 	local object: SignalObject = { entries = {} }
-	local signal = {}
+	local event = {}
 
-	function signal.Connect(_self: any, handler: (T...) -> ()): Connection
+	function event.Connect(_self: any, handler: (T...) -> ()): Connection
 		return connect(object, handler :: any, false)
 	end
 
-	function signal.Once(_self: any, handler: (T...) -> ()): Connection
+	function event.Once(_self: any, handler: (T...) -> ()): Connection
 		return connect(object, handler :: any, true)
 	end
+
+	function event.Wait(_self: any): T...
+		local thread = coroutine.running()
+		connect(object, function(...)
+			task.spawn(thread, ...)
+		end, true)
+		return coroutine.yield()
+	end
+
+	local signal = { event = event }
 
 	function signal.Fire(_self: any, ...: T...)
 		for _, entry in object.entries do
@@ -83,13 +100,6 @@ function Signal.new<T...>(): Signal<T...>
 				task.spawn(entry.handler, ...)
 			end
 		end
-	end
-
-	function signal.DisconnectAll(_self: any)
-		for _, entry in object.entries do
-			entry.connection.Connected = false
-		end
-		object.entries = {}
 	end
 
 	return (signal :: any) :: Signal<T...>
