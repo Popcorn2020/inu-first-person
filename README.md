@@ -7,7 +7,7 @@ A first-person base for any Roblox experience. Put `InuFirstPerson.rbxm` in Repl
 - Camera motion: a walking and sprinting bob, a lean into sideways movement, a hand-held sway, breathing that gets heavy when stamina runs low, a dip on landing that grows with the fall, smooth climbing of steps, and a wider field of view while sprinting. It works on top of Roblox's default camera, so mouse, touch and gamepad look and their sensitivity stay as Roblox makes them.
 - The player's own body: a copy of the character's look follows the real pose every frame and sits a little behind the camera, so looking down shows arms and legs without the camera inside the head. While a Tool is held, the right arm is drawn where the real arm is, so the hand meets the tool.
 - Sprinting: hold Left Shift on a keyboard, press L3 on a gamepad, or hold the RUN button on a touch screen. Stamina drains while sprinting and refills after a short wait; a gauge shows it and fades once it is full again.
-- Third person: when the player zooms out (mouse wheel, pinch), during a cutscene, or whenever the camera is not at the character's head, the body copy stops and hides and the walking motion is off. Field of view offsets, kicks, sprinting and stamina carry on. Zooming back in eases the motion back in.
+- Third person: when the player zooms out (mouse wheel, pinch), the body copy stops and hides and the walking motion is off; field of view offsets, kicks, sprinting and stamina carry on, and zooming back in eases the motion back in. During a cutscene (a Scriptable camera) or with the camera on another subject, the module also leaves the camera itself alone, with no kicks or field of view offsets, while sprinting and stamina carry on.
 
 ## Getting started
 
@@ -67,8 +67,9 @@ Everything is under the table `require` returns. Functions that change something
 
 ```lua
 InuFirstPerson.version: string
-InuFirstPerson.start(overrides: table?)    -- errors on the server, when already running, or on a bad setting
-InuFirstPerson.stop()                      -- puts back camera mode, zoom and field of view; walks without sprinting
+InuFirstPerson.start(overrides: table?)    -- errors on the server, when already running, or on a bad setting;
+                                           -- may wait up to 10 seconds for the PlayerGui
+InuFirstPerson.stop()                      -- puts back zoom, field of view and a locked camera mode; walks without sprinting
 InuFirstPerson.isRunning(): boolean
 InuFirstPerson.getConfig(): Config         -- the settings in use (the defaults while stopped)
 
@@ -112,7 +113,7 @@ InuFirstPerson.stamina.isExhausted(): boolean
 - `camera.kick` swings the view out to `rotationDegrees` (X pitch up, Y yaw left, Z roll left) and `position` (studs, in the camera's space) and springs back, as for recoil or a hit. Kicks add up.
 - `camera.setOffset` holds a CFrame on the camera, in its own space, under a key, until set again or cleared with nil (a lean, an aim). Offsets multiply in the sorted order of their keys, since CFrames do not commute: name the keys so the order is the one you want.
 - `camera.setFovOffset` adds degrees under a key; offsets add up, on top of the sprint widening.
-- `camera.getLayer` is the motion put on the camera this frame, in the camera's space, for something that should sway with the view. The motion is applied at `Enum.RenderPriority.Camera.Value + 1`; read it after that.
+- `camera.getLayer` is the motion put on the camera this frame, in the camera's space, for something that should sway with the view. It leaves out the world-up part, the step smoothing and the landing dip. The motion is applied at `Enum.RenderPriority.Camera.Value + 1`; read it after that.
 - `body.setPoseCallback` runs every frame right after the copy takes its pose (at `Enum.RenderPriority.Camera.Value + 5`), so it may move the copy's parts, to reach for something, say. It must not yield.
 - `body.rebuild` remakes the copy, for changes it cannot see: a recolored part, a resized avatar. Parts and accessories that are added or removed are picked up by themselves.
 - `sprint.setWalkSpeed(nil)` goes back to `sprint.walkSpeed`, and a setting of 0 means `StarterPlayer.CharacterWalkSpeed`. Multipliers apply to walking and sprinting and multiply together (carrying something heavy, a slowing hit).
@@ -122,8 +123,8 @@ InuFirstPerson.stamina.isExhausted(): boolean
 
 - While running, the module owns `Humanoid.WalkSpeed` and writes it every frame. Change walking speed with `sprint.setWalkSpeed` and `sprint.setSpeedMultiplier`, not by writing the Humanoid.
 - First person is judged from the default camera's own output: the camera type is Custom, the subject is the player's character, and the camera is within a stud of its focus. A cutscene that sets the camera type to Scriptable, or a camera on another subject, is third person to the module.
-- With `camera.firstPerson = "start"` (the default), `start` zooms the camera in, and the player can zoom out and back as far as `CameraMaxZoomDistance` allows. `"lock"` sets `Player.CameraMode` to LockFirstPerson, and `"keep"` leaves camera mode and zoom to the game. `stop` puts back the camera mode it found.
-- Steps: characters pop up a step in a frame or two, without a vertical velocity. The view takes those rises in and climbs them at the character's horizontal speed plus `stepSmoothing.catchUpSpeed`. Slopes and lifts driven by physics (constraints, velocities) carry a velocity and are followed as they are. A platform moved by setting its CFrame lifts the character without a velocity, so the view trails it by up to `stepSmoothing.maxOffset` until it stops; move such platforms with physics, or turn `stepSmoothing` off in that game.
+- With `camera.firstPerson = "start"` (the default), `start` zooms the camera in, and the player can zoom out and back as far as `CameraMaxZoomDistance` allows. `"lock"` sets `Player.CameraMode` to LockFirstPerson and `stop` puts back the mode it found. `"start"` and `"keep"` leave `Player.CameraMode` as the game set it, and `"keep"` leaves the zoom too.
+- Steps: characters pop up a step in a frame or two. The view takes in any rise that the floor under the character does not explain and climbs it at the character's horizontal speed plus `stepSmoothing.catchUpSpeed`. The floor is found with a ray down from the root; its slope along the character's way and its own velocity explain a rise, so slopes and lifts driven by physics (constraints, velocities) are followed as they are. A platform moved by setting its CFrame lifts the character without a velocity, so the view trails it by up to `stepSmoothing.maxOffset` until it stops; move such platforms with physics, or turn `stepSmoothing` off in that game.
 - The player's Reduce Motion setting scales the motion by `camera.reducedMotionScale`. In VR the motion is scaled by `camera.vrScale` (0 by default) and the body copy is hidden. VR has not been tried.
 - Characters driven by a ControllerManager (the Character Controller Library) have not been tried; the module warns once when it sees one, since sprinting writes `Humanoid.WalkSpeed`.
 - Server Authority (`Workspace.AuthorityMode` set to Server) is not supported yet: sprinting sets the walking speed on the client.

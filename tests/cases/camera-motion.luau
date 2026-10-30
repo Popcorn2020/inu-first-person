@@ -25,6 +25,7 @@ local RUN = 25.6
 local FLOOR = 3
 local STEP_AT = 6
 local STEP_UP = 1
+local STEP_CLIMB_TIME = 0.03
 local SLOPE_START = 39 / 6
 local SLOPE_END = 41 / 6
 local SLOPE_RISE_SPEED = 8
@@ -113,6 +114,8 @@ local function describe(input: any, time: number)
 	input.airborne = airborne
 	input.verticalSpeed = verticalSpeed
 	input.height = height
+	-- On the ground the root only rises along the slope, which carries it.
+	input.floorRiseSpeed = if airborne then 0 else verticalSpeed
 	input.gravity = GRAVITY
 	input.fatigue = if time < 5 then ramp(time, 3, 2, 0, 0.25) else ramp(time, 6, 1.25, 0.25, 0)
 	input.motionScale = 1
@@ -145,7 +148,13 @@ type Played = {
 	phases: { number },
 }
 
-local function play(CameraMotion: any, settings: any, times: { number }): Played
+local function play(
+	CameraMotion: any,
+	settings: any,
+	times: { number },
+	describeAt: ((input: any, time: number) -> ())?
+): Played
+	local describeFrame = describeAt or describe
 	local state = CameraMotion.new()
 	local input = CameraMotion.newInput()
 	local samples = {}
@@ -158,7 +167,7 @@ local function play(CameraMotion: any, settings: any, times: { number }): Played
 		if last <= KICK_AT and KICK_AT < time then
 			CameraMotion.kick(state, settings, Vector3.new(-3, 1.5, 0), Vector3.new(0, 0, 0.15))
 		end
-		describe(input, time)
+		describeFrame(input, time)
 		CameraMotion.step(state, settings, input, time - last)
 		last = time
 		table.insert(samples, sample(state))
@@ -257,5 +266,26 @@ return function(load: (string) -> any)
 		local played = play(CameraMotion, settings, Frames.fixed(fps, STEP_AT).times)
 		local offset = played.samples[#played.samples][stepChannel]
 		Check.near(`{fps} fps: the step is held back`, offset, -STEP_UP + catchUp / fps, 1e-9)
+	end
+
+	-- A Humanoid may climb a step over a few frames with a velocity to show
+	-- for it. The floor does not rise, so the step is still held back whole,
+	-- less the catch-up over the climb.
+	local function climbStep(input: any, time: number)
+		describe(input, time)
+		if time < STEP_AT and time >= STEP_AT - STEP_CLIMB_TIME then
+			input.height = FLOOR + STEP_UP * (time - (STEP_AT - STEP_CLIMB_TIME)) / STEP_CLIMB_TIME
+			input.verticalSpeed = STEP_UP / STEP_CLIMB_TIME
+		end
+	end
+	for _, fps in { 30, 60, 144, 240 } do
+		local played = play(CameraMotion, settings, Frames.fixed(fps, STEP_AT).times, climbStep)
+		local offset = played.samples[#played.samples][stepChannel]
+		local most = -STEP_UP + catchUp * (STEP_CLIMB_TIME + 1 / fps)
+		Check.ok(
+			`{fps} fps: a step climbed with a velocity is held back`,
+			offset >= -STEP_UP - 1e-9 and offset <= most + 1e-9,
+			`offset {Check.show(offset)}, expected between {-STEP_UP} and {Check.show(most)}`
+		)
 	end
 end

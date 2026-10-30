@@ -27,6 +27,12 @@ local MAX_DT = 0.1
 local ZOOM_IN_TIMEOUT = 3
 -- The field of view reads back as a float; closer than this is unchanged.
 local FOV_EPSILON = 1e-3
+-- How far below the bottom of the legs the floor is looked for, in studs on a
+-- standard avatar.
+local FLOOR_PROBE_MARGIN = 1.5
+-- Surfaces steeper than this (the Y of their normal) are walls or edges, not
+-- floors with a slope to climb.
+local FLOOR_MIN_NORMAL_Y = 0.2
 
 local Camera = {}
 
@@ -57,6 +63,10 @@ local savedCameraMode: Enum.CameraMode? = nil
 local savedFieldOfView: number? = nil
 local savedMaxZoom: number? = nil
 local zoomInLeft: number? = nil
+
+local floorParams = RaycastParams.new()
+floorParams.FilterType = Enum.RaycastFilterType.Exclude
+floorParams.RespectCanCollide = true
 
 local function getMotionScale(): number
 	local settings = Shared.config.camera
@@ -130,6 +140,25 @@ local function stepZoomIn(dt: number, firstPerson: boolean, rig: Character.Rig?)
 	end
 end
 
+-- How fast the floor under the root carries it up (CameraMotion.Input's
+-- floorRiseSpeed). With no floor in reach, the root's own vertical speed.
+local function getFloorRiseSpeed(rig: Character.Rig, velocity: Vector3): number
+	local root = rig.root
+	local legs = math.max(rig.humanoid.HipHeight, root.Size.Y)
+	local reach = root.Size.Y / 2 + legs + FLOOR_PROBE_MARGIN * Character.getScale(rig)
+	local hit = workspace:Raycast(root.Position, Vector3.new(0, -reach, 0), floorParams)
+	if not hit then
+		return velocity.Y
+	end
+	local normal = hit.Normal
+	local floorVelocity = hit.Instance:GetVelocityAtPosition(hit.Position)
+	if normal.Y < FLOOR_MIN_NORMAL_Y then
+		return floorVelocity.Y
+	end
+	local across = velocity - floorVelocity
+	return floorVelocity.Y - (normal.X * across.X + normal.Z * across.Z) / normal.Y
+end
+
 local function fillInput(camera: Camera, rig: Character.Rig, firstPerson: boolean)
 	local humanoid, root = rig.humanoid, rig.root
 	local velocity = root.AssemblyLinearVelocity
@@ -166,6 +195,7 @@ local function fillInput(camera: Camera, rig: Character.Rig, firstPerson: boolea
 	input.airborne = airborne
 	input.verticalSpeed = velocity.Y
 	input.height = root.Position.Y
+	input.floorRiseSpeed = getFloorRiseSpeed(rig, velocity)
 	input.gravity = workspace.Gravity
 	input.fatigue = Shared.fatigue
 	input.motionScale = getMotionScale()
@@ -181,6 +211,7 @@ local function apply(rawDt: number)
 	if rig ~= lastRig then
 		lastRig = rig
 		CameraMotion.reset(motion)
+		floorParams.FilterDescendantsInstances = if rig then { rig.character } else {}
 	end
 
 	local firstPerson = judgeFirstPerson(camera, rig)
@@ -240,11 +271,10 @@ function Camera.start()
 	CameraMotion.reset(motion)
 
 	local mode = Shared.config.camera.firstPerson
-	savedCameraMode = player.CameraMode
 	if mode == "lock" then
+		savedCameraMode = player.CameraMode
 		player.CameraMode = Enum.CameraMode.LockFirstPerson
 	elseif mode == "start" then
-		player.CameraMode = Enum.CameraMode.Classic
 		savedMaxZoom = player.CameraMaxZoomDistance
 		player.CameraMaxZoomDistance = player.CameraMinZoomDistance
 		zoomInLeft = ZOOM_IN_TIMEOUT
@@ -277,7 +307,7 @@ function Camera.stop()
 
 	finishZoomIn()
 	local mode = savedCameraMode
-	if mode and Shared.config.camera.firstPerson ~= "keep" then
+	if mode then
 		player.CameraMode = mode
 	end
 	savedCameraMode = nil

@@ -14,12 +14,14 @@ local DEFAULTS = {
 		-- "start" begins zoomed into first person and lets the player zoom out
 		-- to third person (mouse wheel, pinch) and back. "lock" keeps the camera
 		-- in first person (Player.CameraMode LockFirstPerson). "keep" leaves the
-		-- camera mode and zoom to the game. What was there comes back on stop.
+		-- camera mode and zoom to the game. "start" leaves Player.CameraMode as
+		-- the game set it; "lock" puts the old mode back on stop.
 		--
 		-- In third person the body copy stops and hides and the walking motion
 		-- (bob, tilt, sway, breathing, landing, step smoothing) is off, since the
 		-- real character shows and the camera orbits it. Field of view offsets,
-		-- kicks, sprinting and stamina carry on.
+		-- kicks, sprinting and stamina carry on. A Scriptable camera, or one on
+		-- another subject, gets no motion, kicks or offsets at all.
 		firstPerson = "start" :: "start" | "lock" | "keep",
 		-- How quickly the walking motion fades back in after zooming into first
 		-- person.
@@ -118,8 +120,8 @@ local DEFAULTS = {
 	},
 
 	-- Characters pop up and down steps in a frame or two; the view climbs them
-	-- at a steady pace instead. Slopes and lifts, which move the character
-	-- with a velocity, are followed as they are.
+	-- at a steady pace instead. A rise the floor under the character explains
+	-- (a slope, or a lift moved by physics) is followed as it is.
 	stepSmoothing = {
 		enabled = true,
 		-- The view catches up with the character at the character's horizontal
@@ -214,8 +216,9 @@ local DEFAULTS = {
 		gamepadMode = "toggle" :: "hold" | "toggle",
 		touchMode = "hold" :: "hold" | "toggle",
 		-- The InputContext's Priority and Sink. With Sink on, the sprint keys
-		-- do not reach lower contexts, such as the default player scripts' Shift
-		-- lock toggle.
+		-- do not reach Input Action System contexts of lower priority. The
+		-- default player scripts' Shift lock still sees Shift; turn off
+		-- StarterPlayer.EnableMouseLockOption.
 		priority = 2000,
 		sink = true,
 	},

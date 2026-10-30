@@ -65,11 +65,12 @@ local function block(
 	}, parent)
 end
 
--- A sign facing +Z (toward the spawn) with `text` on it.
+-- A sign with `text` on the side that faces the spawn at the origin.
 local function sign(parent: any, text: string, position: any)
 	local board = block(parent, `Sign {text}`, Vector3.new(10, 3, 0.4), CFrame.new(position), DARK)
 	local gui = new("SurfaceGui", {
-		Face = Enum.NormalId.Back,
+		-- Back faces +Z, Front faces -Z.
+		Face = if position.Z < 0 then Enum.NormalId.Back else Enum.NormalId.Front,
 		SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud,
 		PixelsPerStud = 40,
 	}, board)
@@ -78,7 +79,8 @@ local function sign(parent: any, text: string, position: any)
 		BackgroundTransparency = 1,
 		Text = text,
 		TextColor3 = Color3.fromRGB(255, 255, 255),
-		TextScaled = true,
+		-- A fixed size: TextScaled set from Lune did not reach the place file.
+		TextSize = 72,
 		FontFace = Font.new(BUILDER_SANS, Enum.FontWeight.Bold),
 	}, gui)
 end

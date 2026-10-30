@@ -37,6 +37,10 @@ export type Input = {
 	-- The root's vertical velocity and height.
 	verticalSpeed: number,
 	height: number,
+	-- How fast the floor carries the root up: the floor's own vertical speed
+	-- plus the climb of its slope along the root's way over it. A step is flat
+	-- and still, so it rises at 0 even while the root pops up onto it.
+	floorRiseSpeed: number,
 	-- workspace.Gravity, to work out the end of a fall between two frames.
 	gravity: number,
 	-- 0 with full stamina, 1 with none.
@@ -76,10 +80,10 @@ export type State = {
 	landDropVelocity: number,
 	landPitch: number,
 	landPitchVelocity: number,
-	-- The last frame's height, vertical velocity and footing, nil height
-	-- before the first frame.
+	-- The last frame's height, floor rise speed and footing, nil height before
+	-- the first frame.
 	lastHeight: number?,
-	lastVerticalSpeed: number,
+	lastFloorRiseSpeed: number,
 	wasGrounded: boolean,
 	stepOffset: number,
 	sprintFov: number,
@@ -116,6 +120,7 @@ function CameraMotion.newInput(): Input
 		airborne = false,
 		verticalSpeed = 0,
 		height = 0,
+		floorRiseSpeed = 0,
 		gravity = 196.2,
 		fatigue = 0,
 		motionScale = 1,
@@ -151,7 +156,7 @@ function CameraMotion.reset(state: State)
 	state.landPitch = 0
 	state.landPitchVelocity = 0
 	state.lastHeight = nil
-	state.lastVerticalSpeed = 0
+	state.lastFloorRiseSpeed = 0
 	state.wasGrounded = false
 	state.stepOffset = 0
 	state.sprintFov = 0
@@ -319,11 +324,10 @@ local function stepLanding(state: State, settings: Config.Config, input: Input, 
 	)
 end
 
--- How far the root's own vertical velocity carried it over a frame, from the
--- speeds at the frame's two ends. The slower end counts, so the brief spike
--- of a step caught by one frame does not; a slope or a lift, which keeps its
--- speed, does.
-local function riseFromVelocity(before: number, after: number, dt: number): number
+-- How far the floor carried the root up over a frame, from its rise speeds at
+-- the frame's two ends. The slower end counts, so stepping onto a slope or a
+-- lift between two frames is not credited for the whole frame.
+local function riseFromFloor(before: number, after: number, dt: number): number
 	if before > 0 and after > 0 then
 		return math.min(before, after) * dt
 	elseif before < 0 and after < 0 then
@@ -335,10 +339,10 @@ end
 local function stepSmoothing(state: State, settings: Config.Config, input: Input, dt: number)
 	local smoothing = settings.stepSmoothing
 	local lastHeight = state.lastHeight
-	local lastVerticalSpeed = state.lastVerticalSpeed
+	local lastFloorRiseSpeed = state.lastFloorRiseSpeed
 	local wasGrounded = state.wasGrounded
 	state.lastHeight = input.height
-	state.lastVerticalSpeed = input.verticalSpeed
+	state.lastFloorRiseSpeed = input.floorRiseSpeed
 	state.wasGrounded = input.grounded
 
 	if not smoothing.enabled or lastHeight == nil then
@@ -350,11 +354,12 @@ local function stepSmoothing(state: State, settings: Config.Config, input: Input
 		state.stepOffset = 0
 		return
 	end
-	-- A step moves the root between two frames without a velocity to show
-	-- for it, at any frame rate. That part is held back, then let out at a
-	-- steady pace over real time. The end of a fall is the landing dip's.
+	-- Whatever lifted the root beyond what the floor explains is a step,
+	-- however many frames the Humanoid takes to climb it and whatever velocity it
+	-- shows meanwhile. That part is held back, then let out at a steady pace
+	-- over real time. The end of a fall is the landing dip's.
 	if input.grounded and wasGrounded then
-		local popped = rise - riseFromVelocity(lastVerticalSpeed, input.verticalSpeed, dt)
+		local popped = rise - riseFromFloor(lastFloorRiseSpeed, input.floorRiseSpeed, dt)
 		state.stepOffset =
 			math.clamp(state.stepOffset - popped, -smoothing.maxOffset, smoothing.maxOffset)
 	end

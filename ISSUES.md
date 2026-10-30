@@ -8,6 +8,8 @@ Known problems with InuFirstPerson, what has not been tried, and ideas. Each ite
 - `stamina.jumpCost` takes stamina for each jump but does not stop a jump when there is not enough.
 - A platform moved by setting its CFrame lifts the character without a velocity, so the view trails it by up to `stepSmoothing.maxOffset` until it stops. Platforms moved by physics are followed as they are.
 - Changes to the character's colors and size show on the body copy only after `body.rebuild()`.
+- With a toggle mode, turning from one move key to another (W released a frame before D is pressed) stops sprinting for that frame, so `sprintChanged` fires twice.
+- While zooming between 0.5 and 1 stud, the real character and the body copy may show together for a moment. Not yet seen in play.
 
 ## Not tried
 
@@ -19,3 +21,4 @@ Known problems with InuFirstPerson, what has not been tried, and ideas. Each ite
 
 - Arms that reach for things (IK), built on `body.setPoseCallback`.
 - Crouching.
+- Signals for landing (with the fall speed) and for footsteps (on the bob's beat), for sounds and effects that should match the view.
