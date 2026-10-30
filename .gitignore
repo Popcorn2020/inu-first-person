@@ -1,0 +1,6 @@
+build/
+.aitest*/
+sourcemap.json
+.luau-defs/
+*.rbxl.lock
+*.rbxm.lock

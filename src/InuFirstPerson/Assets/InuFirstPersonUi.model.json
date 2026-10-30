@@ -1,0 +1,229 @@
+{
+  "ClassName": "ScreenGui",
+  "Properties": {
+    "ResetOnSpawn": false,
+    "ZIndexBehavior": "Sibling",
+    "ScreenInsets": "CoreUISafeInsets",
+    "DisplayOrder": 5
+  },
+  "Children": [
+    {
+      "Name": "Gauge",
+      "ClassName": "Frame",
+      "Properties": {
+        "AnchorPoint": [
+          0.5,
+          1
+        ],
+        "Position": {
+          "UDim2": [
+            [
+              0.5,
+              0
+            ],
+            [
+              1,
+              -84
+            ]
+          ]
+        },
+        "Size": {
+          "UDim2": [
+            [
+              0.3,
+              0
+            ],
+            [
+              0,
+              6
+            ]
+          ]
+        },
+        "BackgroundColor3": [
+          0.06,
+          0.06,
+          0.07
+        ],
+        "BackgroundTransparency": 0.45,
+        "BorderSizePixel": 0
+      },
+      "Children": [
+        {
+          "Name": "WidthLimit",
+          "ClassName": "UISizeConstraint",
+          "Properties": {
+            "MinSize": [
+              120,
+              0
+            ],
+            "MaxSize": [
+              280,
+              6
+            ]
+          }
+        },
+        {
+          "Name": "Corner",
+          "ClassName": "UICorner",
+          "Properties": {
+            "CornerRadius": {
+              "UDim": [
+                0,
+                3
+              ]
+            }
+          }
+        },
+        {
+          "Name": "Fill",
+          "ClassName": "Frame",
+          "Attributes": {
+            "ExhaustedColor": {
+              "Color3": [
+                1,
+                0.42,
+                0.34
+              ]
+            }
+          },
+          "Properties": {
+            "AnchorPoint": [
+              0,
+              0.5
+            ],
+            "Position": {
+              "UDim2": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  0.5,
+                  0
+                ]
+              ]
+            },
+            "Size": {
+              "UDim2": [
+                [
+                  1,
+                  0
+                ],
+                [
+                  1,
+                  0
+                ]
+              ]
+            },
+            "BackgroundColor3": [
+              0.95,
+              0.95,
+              0.95
+            ],
+            "BackgroundTransparency": 0.05,
+            "BorderSizePixel": 0
+          },
+          "Children": [
+            {
+              "Name": "Corner",
+              "ClassName": "UICorner",
+              "Properties": {
+                "CornerRadius": {
+                  "UDim": [
+                    0,
+                    3
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "SprintButton",
+      "ClassName": "TextButton",
+      "Properties": {
+        "AnchorPoint": [
+          0.5,
+          1
+        ],
+        "Position": {
+          "UDim2": [
+            [
+              1,
+              -60
+            ],
+            [
+              1,
+              -100
+            ]
+          ]
+        },
+        "Size": {
+          "UDim2": [
+            [
+              0,
+              56
+            ],
+            [
+              0,
+              56
+            ]
+          ]
+        },
+        "BackgroundColor3": [
+          0.06,
+          0.06,
+          0.07
+        ],
+        "BackgroundTransparency": 0.5,
+        "BorderSizePixel": 0,
+        "AutoButtonColor": false,
+        "Text": "RUN",
+        "TextColor3": [
+          1,
+          1,
+          1
+        ],
+        "TextSize": 16,
+        "FontFace": {
+          "Font": {
+            "family": "rbxasset://fonts/families/BuilderSans.json",
+            "weight": "Bold",
+            "style": "Normal"
+          }
+        },
+        "Visible": false
+      },
+      "Children": [
+        {
+          "Name": "Corner",
+          "ClassName": "UICorner",
+          "Properties": {
+            "CornerRadius": {
+              "UDim": [
+                1,
+                0
+              ]
+            }
+          }
+        },
+        {
+          "Name": "Stroke",
+          "ClassName": "UIStroke",
+          "Properties": {
+            "ApplyStrokeMode": "Border",
+            "Color": [
+              1,
+              1,
+              1
+            ],
+            "Thickness": 2,
+            "Transparency": 0.35
+          }
+        }
+      ]
+    }
+  ]
+}
