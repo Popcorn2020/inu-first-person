@@ -53,11 +53,11 @@ return function(load: (string) -> any)
 	)
 
 	-- configure merges onto the settings in use, not the defaults.
-	local base = Config.resolve({ look = { turnTime = 0.2 }, input = { keyboard = {} } })
+	local base = Config.resolve({ look = { turnDamping = 0.2 }, input = { keyboard = {} } })
 	local configured = Config.resolve({ kick = { shake = 0.5 } }, base, "configure")
 	Check.ok(
 		"an override on a base keeps the base's overrides",
-		configured.look.turnTime == 0.2 and configured.kick.shake == 0.5
+		configured.look.turnDamping == 0.2 and configured.kick.shake == 0.5
 	)
 	Check.ok("an empty list in the base is kept", #configured.input.keyboard == 0)
 	Check.ok(

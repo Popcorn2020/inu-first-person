@@ -86,6 +86,48 @@ function Math.spring(
 		slowShare * slow * slowDecay + fastShare * fast * fastDecay
 end
 
+-- A damped spring chasing a target that moved in a straight line from
+-- `targetBefore` to `targetAfter` during the step, solved exactly for that
+-- path, as `follow` is for the first-order lag. A steady chase then trails
+-- by the same amount (2 * damping * speed / omega) at any frame rate.
+function Math.springFollow(
+	position: number,
+	velocity: number,
+	targetBefore: number,
+	targetAfter: number,
+	frequency: number,
+	damping: number,
+	dt: number
+): (number, number)
+	local omega = TWO_PI * frequency
+	if omega <= 0 or dt <= 0 then
+		return position, velocity
+	end
+	local speed = (targetAfter - targetBefore) / dt
+	local trail = 2 * damping * speed / omega
+	-- Where it stands against the steady chase, which a plain spring settles.
+	local offset, offsetVelocity =
+		Math.spring(position - (targetBefore - trail), velocity - speed, 0, frequency, damping, dt)
+	return offset + targetAfter - trail, offsetVelocity + speed
+end
+
+-- Lets a spring's motion die away with no pull, as when its target is wherever
+-- it happens to be: the damping alone slows it.
+function Math.coast(
+	position: number,
+	velocity: number,
+	frequency: number,
+	damping: number,
+	dt: number
+): (number, number)
+	local drag = 2 * damping * TWO_PI * frequency
+	if drag <= 0 or dt <= 0 then
+		return position + velocity * math.max(dt, 0), velocity
+	end
+	local decay = math.exp(-drag * dt)
+	return position + velocity * (1 - decay) / drag, velocity * decay
+end
+
 -- The velocity to give a spring at rest so that it swings out to `peak` and
 -- back. Lets callers ask for a dip of a size instead of a speed. Only for
 -- damping up to 1; above 1 it treats the spring as critically damped.

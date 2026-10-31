@@ -44,6 +44,16 @@ local FLOOR_MIN_NORMAL_Y = 0.2
 -- The eye keeps this far from walls, in studs on a standard avatar: past
 -- the corners of the camera's near plane.
 local EYE_RADIUS = 0.2
+-- After a wall stops being in the way, the eye waits this long, then moves
+-- back out over about EYE_RELEASE_TIME. The wait spans the gaps of a truss
+-- or a fence passing in front, so the eye does not pump in and out. It moves
+-- in at once, so the near plane never cuts the wall.
+local EYE_HOLD_TIME = 0.25
+local EYE_RELEASE_TIME = 0.15
+-- How long the eye takes to stop or start leaning out to look down as the
+-- character starts or stops climbing. A ladder is right in front, so leaning
+-- out only presses the eye into it.
+local LEAN_SWITCH_TIME = 0.2
 
 local Camera = {}
 
@@ -63,6 +73,12 @@ local appliedLayer = CFrame.identity
 local appliedOffset = Vector3.zero
 -- 0..1: how far the camera has moved to the eye, easing with first person.
 local eyeShare = 0
+-- How much of the eye's reach in front of the neck a wall takes away, and
+-- how much longer it is held before easing back out.
+local eyeShortfall = 0
+local eyeHold = 0
+-- 0..1: how much of camera.lookDownLean is in use, 0 while climbing.
+local leanShare = 1
 -- Whether the motion went on the camera this frame.
 local moving = false
 -- The field of view as the layer left it (read back) and as it was before.
@@ -177,9 +193,15 @@ end
 
 -- How far the eye is from where the default camera put the camera: in front
 -- of the neck at rest, turned with the head (the view's yaw, and the share of
--- its pitch the head takes), short of any wall in between. Zero for a
--- character without a neck joined to its root.
-local function getEyeOffset(camera: Camera, rig: Character.Rig): Vector3
+-- its pitch the head takes), further forward the further it looks down
+-- (unless climbing), and short of any wall ahead. Zero for a character
+-- without a neck joined to its root.
+--
+-- A wall takes away only the reach across, at the eye's own height: straight
+-- above the neck is inside the head, so the eye never drops toward the neck,
+-- as it would pressed against a ladder while the climb moves the body in
+-- and out.
+local function getEyeOffset(camera: Camera, rig: Character.Rig, dt: number): Vector3
 	local neck = Look.getNeckOffset(rig)
 	if not neck then
 		return Vector3.zero
@@ -189,15 +211,34 @@ local function getEyeOffset(camera: Camera, rig: Character.Rig): Vector3
 	local pivot = rig.root.CFrame:PointToWorldSpace(neck + rig.humanoid.CameraOffset)
 	local pitch, yaw = camera.CFrame:ToEulerAnglesYXZ()
 	local head = CFrame.fromEulerAnglesYXZ(pitch * Shared.config.look.headPitchShare, yaw, 0)
-	local reach =
-		head:VectorToWorldSpace(Vector3.new(0, settings.eyeHeight, -settings.eyeForward) * scale)
-	local eye = pivot + reach
-	if reach.Magnitude > 1e-3 then
-		local hit = workspace:Spherecast(pivot, EYE_RADIUS * scale, reach, worldParams)
-		if hit then
-			eye = pivot + reach.Unit * hit.Distance
-		end
+	local climbing = rig.humanoid:GetState() == Enum.HumanoidStateType.Climbing
+	leanShare = Math.approach(leanShare, if climbing then 0 else 1, LEAN_SWITCH_TIME, dt)
+	local lean = settings.lookDownLean * leanShare * math.max(-math.sin(pitch), 0)
+	local reach = head:VectorToWorldSpace(Vector3.new(0, settings.eyeHeight, -settings.eyeForward))
+		+ CFrame.fromEulerAnglesYXZ(0, yaw, 0).LookVector * lean
+	reach *= scale
+	local base = pivot + Vector3.new(0, reach.Y, 0)
+	local across = Vector3.new(reach.X, 0, reach.Z)
+	local length = across.Magnitude
+	if length <= 1e-3 then
+		eyeShortfall = 0
+		eyeHold = 0
+		return base - camera.CFrame.Position
 	end
+	local shortfall = 0
+	local hit = workspace:Spherecast(base, EYE_RADIUS * scale, across, worldParams)
+	if hit then
+		shortfall = length - hit.Distance
+	end
+	if shortfall >= eyeShortfall then
+		eyeShortfall = shortfall
+		eyeHold = EYE_HOLD_TIME
+	elseif eyeHold > 0 then
+		eyeHold -= dt
+	else
+		eyeShortfall = Math.approach(eyeShortfall, shortfall, EYE_RELEASE_TIME, dt)
+	end
+	local eye = base + across * (math.max(length - eyeShortfall, 0) / length)
 	return eye - camera.CFrame.Position
 end
 
@@ -254,6 +295,9 @@ local function apply(rawDt: number)
 		lastRig = rig
 		CameraMotion.reset(motion)
 		eyeShare = 0
+		eyeShortfall = 0
+		eyeHold = 0
+		leanShare = 1
 		worldParams.FilterDescendantsInstances = if rig then { rig.character } else {}
 	end
 
@@ -287,7 +331,7 @@ local function apply(rawDt: number)
 		local offset = Vector3.zero
 		local layer = CFrame.identity
 		if eyeShare > 0 then
-			offset = getEyeOffset(camera, rig) * eyeShare
+			offset = getEyeOffset(camera, rig, dt) * eyeShare
 		end
 		if enabled then
 			fillInput(camera, rig, firstPerson)

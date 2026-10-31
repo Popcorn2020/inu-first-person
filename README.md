@@ -4,10 +4,10 @@ A first-person base for any Roblox experience. Put `InuFirstPerson.rbxm` in Repl
 
 ## What it does
 
-- Camera motion: a walking and sprinting bob, a lean into sideways movement, a hand-held sway, breathing that gets heavy when stamina runs low, a dip on landing that grows with the fall, smooth climbing of steps, a wider field of view while sprinting, and kicks that snap, settle slowly and shake. It works on top of Roblox's default camera, so mouse, touch and gamepad look and their sensitivity stay as Roblox makes them.
-- The eye: in first person the camera sits at the eye, in front of the neck, and swings out over the chest when looking down, as a head does on its neck. As with people, the head takes part of the tilt and the eyes the rest, so the eye stays above the chest. Sitting, climbing or riding, the eye stays where the head is. It stops short of walls.
+- Camera motion: a walking and sprinting bob, a lean into sideways movement, a hand-held sway, breathing that gets heavy when stamina runs low, a dip on landing that grows with the fall, smooth climbing of steps, a wider field of view while sprinting, and kicks that throw the view out and wobble back to rest on one spring, with a fine shake that fades with the wobble. It works on top of Roblox's default camera, so mouse, touch and gamepad look and their sensitivity stay as Roblox makes them.
+- The eye: in first person the camera sits at the eye, in front of the neck, and swings out over the chest when looking down, as a head does on its neck. As with people, the head takes part of the tilt and the eyes the rest, so the eye stays above the chest, and the further it looks down the further it leans forward, as someone does to see their feet, so the chest does not fill the view. Sitting, climbing or riding, the eye stays where the head is. Against a wall it draws back toward the neck at its own height, so climbing a ladder does not jolt it up and down.
 - The player's own body: the real character shows in first person, all but the head and what is worn on it, so sitting, climbing, a held Tool, emotes and vehicles show as they are.
-- Where characters look: in first person the character turns with the view in the same frame, so the body and a held Tool never trail the camera. Standing still, the feet stay put until the view turns past 50 degrees, then the body swings round. Every character's head and waist turn toward where that player looks, on top of the animation, and a held Tool tilts with the view, a little behind fast turns.
+- Where characters look: in first person the view turns first and the body follows it on a spring, so a quick look to the side turns the eyes, then the head and chest, then the body, which swings a little past and settles. Standing still it follows too, so a slow turn moves the body along with the view; a game can let the feet stay put while the view turns a little either side (`look.standTwist`). Every character's head and waist turn toward where that player looks, on top of the animation: the waist a moment after the head, the neck only as far as a neck turns, and a look round behind the body lets the head go back to the front. A held Tool aims with the view, a little behind fast turns.
 - Sprinting: hold Left Shift on a keyboard, press L3 on a gamepad, or hold the RUN button on a touch screen. Stamina drains while sprinting and refills after a short wait; a gauge shows it and fades once it is full again.
 - Third person: when the player zooms out (mouse wheel, pinch), the walking motion and the eye are off and the Humanoid turns the character again; field of view offsets, kicks, where heads look, sprinting and stamina carry on, and zooming back in eases the eye and the motion back in. During a cutscene (a Scriptable camera) or with the camera on another subject, the module also leaves the camera itself alone, with no kicks or field of view offsets, while sprinting and stamina carry on.
 
@@ -57,7 +57,7 @@ InuFirstPerson.start({
 
 | Group | What it covers |
 | --- | --- |
-| `camera` | Whether the game starts in, locks to, or leaves alone first person; the field of view; where the eye sits; overall motion scale, and the scale under Reduce Motion and in VR |
+| `camera` | Whether the game starts in, locks to, or leaves alone first person; the field of view; where the eye sits and how far it leans looking down; overall motion scale, and the scale under Reduce Motion and in VR |
 | `bob` | Step rate and size of the walking bob, its growth with speed and sprinting |
 | `strafeTilt` | The lean into sideways movement |
 | `sway` | The hand-held drift and jitter, and how much stronger they get when tired |
@@ -65,9 +65,9 @@ InuFirstPerson.start({
 | `landing` | The dip on landing: from which falling speed, how deep, how springy |
 | `stepSmoothing` | How the view climbs steps |
 | `sprintFov` | The field of view added while sprinting |
-| `kick` | Behind `camera.kick`: the snap, the slow settle under it, the shake, and how repeated kicks vary |
+| `kick` | Behind `camera.kick`: how fast the view wobbles back and how quickly the wobble dies, the shake, and how repeated kicks vary |
 | `body` | Showing the player's own body |
-| `look` | Turning the character with the view; how far and how quickly it swings round; how far heads tilt and the share of the waist; the Tool's aim |
+| `look` | How the body follows the view: its spring, and whether standing feet let the view turn a little first; how far the neck turns and when the head lets a look behind go; the head's and the waist's shares and the waist's delay; the Tool's aim |
 | `sync` | Sharing where each player looks: how often, how smoothly others follow |
 | `sprint` | Walking speed, sprinting speed, acceleration, the angle and speed needed to sprint |
 | `stamina` | Size, drain, refill, the wait after running out, jump cost |
@@ -135,14 +135,14 @@ InuFirstPersonServer.stop()                       -- removes the remote; the cli
 ```
 
 - Events have `Connect`, `Once` and `Wait`, like Roblox's events. Handlers run in their own thread, so they may yield.
-- `camera.kick` swings the view out to `rotationDegrees` (X pitch up, Y yaw left, Z roll left) and `position` (studs, in the camera's space) and springs back, as for recoil or a hit. Kicks add up.
+- `camera.kick` swings the view out to `rotationDegrees` (X pitch up, Y yaw left, Z roll left) and `position` (studs, in the camera's space) and wobbles back to rest, as for recoil or a hit. Kicks add up.
 - `camera.setOffset` holds a CFrame on the camera, in its own space, under a key, until set again or cleared with nil (a lean, an aim). Offsets multiply in the sorted order of their keys, since CFrames do not commute: name the keys so the order is the one you want.
 - `camera.setFovOffset` adds degrees under a key; offsets add up, on top of the sprint widening.
 - `camera.getLayer` is the motion put on the camera this frame, in the camera's space, for something that should sway with the view. It leaves out the move to the eye, the step smoothing and the landing dip. The motion is applied at `Enum.RenderPriority.Camera.Value + 1`; read it after that.
 - `camera.getMotion` returns a new table of how much each part of the motion turns the view this frame, in degrees: `bob`, `sway`, `breath`, `tilt`, `landing`, `kick` (the springs), `shake` (the kicks' shake) and `rotation` (all of it); `position`, how far the motion moves the view, in studs; `fatigue`, 0 with full stamina to 1 with none; `fovOffset`, in degrees. All are 0 while the motion is off. It suits a monitor or effects that follow the motion.
 - `look.setEnabled(false)` hands the character's facing back to the Humanoid and leaves every character's joints to the animation. Others still see the local player's look fade to straight ahead.
 - `look.setPoseCallback` runs every frame right after the look turns a character's joints (the local character, and each other one whose look shows), before physics and after the Animator, so it may write joints' `Transform` on top: an IK that brings the left hand to a held Tool, say. What it writes on the neck, waist and right shoulder is redone from the animation each frame, so it does not pile up. It must not yield.
-- `look.getAngles` is where a player looks as this client shows it, in degrees relative to their character's facing: yaw (left positive), then pitch (up positive), or nil, nil while nothing is known.
+- `look.getAngles` is where a player's head turns as this client shows it, in degrees relative to their character's facing: yaw (left positive), then pitch (up positive), or nil, nil while nothing is known. It is the look held to what a neck can do: 0, 0 while the look is round behind the body, and while the head is left to the animation, further than 150 studs from the camera.
 - `sprint.setWalkSpeed(nil)` goes back to `sprint.walkSpeed`, and a setting of 0 means `StarterPlayer.CharacterWalkSpeed`. Multipliers apply to walking and sprinting and multiply together (carrying something heavy, a slowing hit).
 - `stamina.set` and `stamina.add` clamp to 0..max.
 
@@ -185,10 +185,10 @@ This folder is the source of InuFirstPerson. Games use a copy of `dist/InuFirstP
 
 Tools: Rojo 7.7.1, Lune 0.11.0, luau-lsp 1.70.1, StyLua 2.5.2, selene 0.30.1.
 
-- `src/InuFirstPerson/` is the module. `init.luau` is the API, `Config.luau` the settings; `CameraMotion`, `StaminaModel`, `Turn`, `SyncProtocol` and `Math` are pure (no Roblox services) so the tests can run them.
+- `src/InuFirstPerson/` is the module. `init.luau` is the API, `Config.luau` the settings; `CameraMotion`, `StaminaModel`, `Turn`, `LookPose`, `SyncProtocol` and `Math` are pure (no Roblox services) so the tests can run them.
 - `src/InuFirstPersonServer/` is the server half. It shares `SyncProtocol.luau` and `Version.luau` with the module: `server.project.json` puts copies of them in it, so both halves read the same protocol and version.
 - Build the rbxms: `rojo build module.project.json -o dist/InuFirstPerson.rbxm` and `rojo build server.project.json -o dist/InuFirstPersonServer.rbxm`. `default.project.json` puts both into a place, for the type checker and for serving to Studio.
-- Run the tests: `lune run tests/run`. They play the same scripted runs (walking, sprinting, strafing, a step, a slope, a jump, a fall, a stop, third person, a kick) at 30, 60, 144 and 240 frames per second and at uneven frame times, and check that every value stays within a frame of a 960 frames-per-second run. They also check the stamina timings, how the body swings round to the view, the look's encoding, the shape of a kick and the settings' errors.
+- Run the tests: `lune run tests/run`. They play the same scripted runs (walking, sprinting, strafing, a step, a slope, a jump, a fall, a stop, third person, a kick) at 30, 60, 144 and 240 frames per second and at uneven frame times, and check that every value stays within a frame of a 960 frames-per-second run. They also check the stamina timings, how the body follows the view (at the same frame rates), how the head, neck and waist share a look, the look's encoding, the shape of a kick and the settings' errors.
 - Build the demo place after the rbxms: `lune run tools/build-demo` writes `dist/InuFirstPersonDemo.rbxl`, a course with stairs, slopes, towers with a ladder, a long corridor, a seat, a lift and a tool, and on screen a panel with the frame rate, the module's cost per frame and the rig (R15 or R6), sliders for some settings with the default in the middle, a monitor of the camera motion, and the player seen from outside. Its scripts are in `tools/demo/`.
 - Known diagnostics: the type checker cannot resolve the `@lune/*` requires in `tests/` and `tools/`, nor the module the demo scripts take from the built place.
 

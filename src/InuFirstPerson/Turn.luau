@@ -1,135 +1,82 @@
 --!strict
--- How far a character's facing is turned from the view (the twist), for a
--- character that turns with the camera in first person. Standing still, the
--- feet stay put, so the twist grows as the view turns, until it passes the
--- threshold; then the body swings round to the view over a fixed time while
--- keeping up with it. Moving (or holding a Tool), the body swings round the
--- same way and from then on turns with the view exactly.
+-- Which way a character's body faces while it turns with the camera in first
+-- person. The view (the eyes) turns first and the body follows it on a
+-- spring, so it lags a quick turn and swings a little past, as a body with
+-- weight does; the neck and waist take up the difference (Look).
 --
--- The swing is a function of the time since it began, and a threshold
--- crossed partway through a frame starts it partway through, so a steady
--- turn gives the same twist at any frame rate. Requires only Math, so the
--- Lune tests can load it outside Roblox.
+-- A slack lets the feet stay put while the view turns within it either side;
+-- the turn beyond it drags the body round on the same spring, so even a slow
+-- turn moves the body smoothly rather than in steps.
+--
+-- The spring is solved exactly for a view that turns steadily through a
+-- step, so a steady turn leaves the same lag at any frame rate. Requires
+-- only Math, so the Lune tests can load it outside Roblox.
 
 local Math = require(script.Parent.Math)
 
--- A twist this small counts as facing the view.
-local ALIGNED = math.rad(0.5)
-
 export type State = {
-	-- Body yaw minus view yaw, in radians; nil until the first step.
-	twist: number?,
+	-- The body's yaw (radians) and how fast it turns; nil until the first
+	-- step.
+	yaw: number?,
+	speed: number,
 	-- The view's yaw at the last step.
-	lastYaw: number,
-	-- While swinging round: the twist the swing began from, and the time since.
-	swingFrom: number?,
-	swingTime: number,
-	-- Turning with the view exactly.
-	locked: boolean,
+	lastView: number,
 }
 
 local Turn = {}
 
 function Turn.new(): State
-	return { lastYaw = 0, swingTime = 0, locked = false }
+	return { speed = 0, lastView = 0 }
 end
 
--- The next step starts from `twist` (radians, body yaw minus view yaw) with
--- the view at `yaw`, as when the character is taken over with its feet where
--- they are.
-function Turn.reset(state: State, twist: number, yaw: number)
-	state.twist = twist
-	state.lastYaw = yaw
-	state.swingFrom = nil
-	state.swingTime = 0
-	state.locked = false
+-- The next step starts with the body at rest facing `yaw` and the view at
+-- `view` (radians), as when the character is taken over where it stands.
+function Turn.reset(state: State, yaw: number, view: number)
+	state.yaw = yaw
+	state.speed = 0
+	state.lastView = view
 end
 
-local function smoothstep(share: number): number
-	local x = math.clamp(share, 0, 1)
-	return x * x * (3 - 2 * x)
-end
-
-local function startSwing(state: State, from: number, elapsed: number)
-	state.swingFrom = from
-	state.swingTime = elapsed
-end
-
--- Advances to the view's `yaw` and returns the twist (radians). `follow` is
--- true while the body should end up turning with the view (moving, holding a
--- Tool). `threshold` and `limit` are radians, `swingTime` seconds.
+-- Advances to the view's `view` and returns the body's yaw (radians, within
+-- ±pi). `slack` is radians, 0 for a body that follows the view itself;
+-- `frequency` is Hz.
 function Turn.step(
 	state: State,
-	yaw: number,
-	follow: boolean,
-	threshold: number,
-	limit: number,
-	swingTime: number,
+	view: number,
+	slack: number,
+	frequency: number,
+	damping: number,
 	dt: number
 ): number
-	local twist = state.twist
-	if twist == nil then
-		state.twist = 0
-		state.lastYaw = yaw
-		state.locked = follow
-		return 0
+	local yaw = state.yaw
+	if yaw == nil then
+		Turn.reset(state, view, view)
+		return view
 	end
-	local turned = Math.shortestAngle(yaw - state.lastYaw)
-	state.lastYaw = yaw
+	-- Both ends of the view's turn this step, unwrapped near the body.
+	local turned = Math.shortestAngle(view - state.lastView)
+	local viewAfter = yaw + Math.shortestAngle(view - yaw)
+	local viewBefore = viewAfter - turned
+	state.lastView = view
 
-	if state.locked then
-		if follow then
-			state.twist = 0
-			return 0
-		end
-		-- Stopping: the feet stay where the view was a frame ago.
-		state.locked = false
-		twist = 0
-	end
-
-	local from = state.swingFrom
-	if from == nil then
-		local before = twist
-		local after = math.clamp(twist - turned, -limit, limit)
-		if follow then
-			if math.abs(after) < ALIGNED then
-				state.locked = true
-				state.twist = 0
-				return 0
-			end
-			startSwing(state, after, 0)
-		elseif math.abs(after) > threshold then
-			if math.abs(before) < threshold and after ~= before then
-				-- The view turned past the threshold partway through the
-				-- frame; the swing began there.
-				local crossing = if after > 0 then threshold else -threshold
-				startSwing(state, crossing, (after - crossing) / (after - before) * dt)
-			else
-				-- Already past it, as when taken over facing away.
-				startSwing(state, after, dt)
-			end
-		else
-			state.twist = after
-			return after
-		end
+	local twist = viewAfter - yaw
+	local speed = state.speed
+	if math.abs(twist) <= slack then
+		-- Within the slack the feet stay: nothing pulls, and what turn is left
+		-- dies away.
+		yaw, speed = Math.coast(yaw, speed, frequency, damping, dt)
 	else
-		state.swingTime += dt
+		-- The body is pulled to the slack's edge on the side the view is, which
+		-- moves with the view.
+		local edge = if twist > 0 then slack else -slack
+		yaw, speed =
+			Math.springFollow(yaw, speed, viewBefore - edge, viewAfter - edge, frequency, damping, dt)
 	end
 
-	local swingFrom = state.swingFrom :: number
-	local over = state.swingTime - math.max(swingTime, 0)
-	if over >= 0 then
-		-- The swing ended partway through the frame; standing, the feet have
-		-- stayed put since, while the view went on turning.
-		state.swingFrom = nil
-		state.locked = follow
-		local result = if follow or dt <= 0 then 0 else -turned * math.min(over / dt, 1)
-		state.twist = result
-		return result
-	end
-	local result = swingFrom * (1 - smoothstep(state.swingTime / swingTime))
-	state.twist = result
-	return result
+	local wrapped = Math.shortestAngle(yaw)
+	state.yaw = wrapped
+	state.speed = speed
+	return wrapped
 end
 
 return Turn

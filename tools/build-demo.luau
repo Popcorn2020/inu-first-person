@@ -7,6 +7,9 @@
 -- lift and a tool. From the repo root, after building both rbxms:
 --
 --     lune run tools/build-demo
+--
+-- A path after it writes the place there instead, as for a test copy while
+-- the demo is open in Studio.
 
 local fs = require("@lune/fs")
 local process = require("@lune/process")
@@ -25,7 +28,7 @@ local Font = roblox.Font
 local ROOT = process.cwd
 local MODULE = `{ROOT}/dist/InuFirstPerson.rbxm`
 local SERVER = `{ROOT}/dist/InuFirstPersonServer.rbxm`
-local OUTPUT = `{ROOT}/dist/InuFirstPersonDemo.rbxl`
+local OUTPUT = process.args[1] or `{ROOT}/dist/InuFirstPersonDemo.rbxl`
 local SCRIPTS = `{ROOT}/tools/demo`
 
 local GROUND = Color3.fromRGB(96, 100, 106)
@@ -294,21 +297,25 @@ new("TextButton", {
 -- The sliders. Each changes one setting while the demo runs, and the script
 -- puts the setting's default, read from the module, in the middle. The ends
 -- sit the same distance either side: from `low` (0 unless the setting has a
--- floor) to twice the default less `low`.
-local SLIDERS: { { group: string, key: string, low: number? } } = {
+-- floor) to twice the default less `low`. A setting whose default is its
+-- floor gives `high` instead, and its default sits at the low end.
+local SLIDERS: { { group: string, key: string, low: number?, high: number? } } = {
 	{ group = "camera", key = "motionScale" },
 	{ group = "camera", key = "eyeHeight" },
 	{ group = "camera", key = "eyeForward" },
+	{ group = "camera", key = "lookDownLean" },
 	{ group = "look", key = "headPitchShare", low = 0.2 },
-	{ group = "look", key = "turnThreshold" },
-	{ group = "look", key = "turnTime" },
+	{ group = "look", key = "turnFrequency", low = 0.5 },
+	{ group = "look", key = "turnDamping", low = 0.2 },
+	{ group = "look", key = "standTwist", high = 90 },
+	{ group = "look", key = "waistLag" },
+	{ group = "look", key = "lookAwayAngle", low = 40 },
 	{ group = "look", key = "toolAimLag" },
-	{ group = "kick", key = "settleShare" },
+	{ group = "kick", key = "frequency", low = 1 },
+	{ group = "kick", key = "damping", low = 0.05 },
 	{ group = "kick", key = "shake" },
 	{ group = "sway", key = "tiredScale", low = 1 },
-	{ group = "breathing", key = "tiredPitchDegrees" },
 	{ group = "sprint", key = "runMultiplier", low = 1 },
-	{ group = "sprintFov", key = "degrees" },
 }
 local RAIL_HEIGHT = 4
 
@@ -359,12 +366,15 @@ for order, slider in SLIDERS do
 	local row = new("Frame", {
 		Name = name,
 		LayoutOrder = order,
-		Size = UDim2.new(1, 0, 0, 24),
+		Size = UDim2.new(1, 0, 0, 22),
 		BackgroundTransparency = 1,
 	}, sliderRows)
 	row:SetAttribute("Group", slider.group)
 	row:SetAttribute("Key", slider.key)
 	row:SetAttribute("Low", slider.low or 0)
+	if slider.high then
+		row:SetAttribute("High", slider.high)
+	end
 	cell(row, {
 		Name = "Name",
 		Size = UDim2.fromScale(0.52, 1),

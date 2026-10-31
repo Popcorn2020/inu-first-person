@@ -11,6 +11,7 @@ local cases = {
 	require("./cases/math"),
 	require("./cases/stamina"),
 	require("./cases/turn"),
+	require("./cases/look-pose"),
 	require("./cases/sync-protocol"),
 	require("./cases/kick"),
 	require("./cases/config"),

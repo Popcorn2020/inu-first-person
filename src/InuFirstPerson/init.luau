@@ -167,8 +167,8 @@ InuFirstPerson.camera = {
 		return Shared.firstPerson
 	end,
 	-- A jolt that swings out to `rotationDegrees` (X pitch up, Y yaw left,
-	-- Z roll left) and `position` (studs, in camera space) and springs back,
-	-- as for recoil or a hit. Kicks add up.
+	-- Z roll left) and `position` (studs, in camera space) and wobbles back
+	-- to rest, as for recoil or a hit. Kicks add up.
 	kick = function(rotationDegrees: Vector3, position: Vector3?)
 		requireRunning("camera.kick")
 		if
@@ -210,7 +210,7 @@ InuFirstPerson.camera = {
 		return Camera.getLayer()
 	end,
 	-- How much each part of the motion turns the view this frame, in
-	-- degrees: bob, sway, breath, tilt, landing, kick (the springs), shake
+	-- degrees: bob, sway, breath, tilt, landing, kick (its spring), shake
 	-- (the kicks' shake) and rotation (all of it); position, how far the
 	-- motion moves the view, in studs; fatigue, 0 with full stamina to 1
 	-- with none; fovOffset, degrees. All 0 while the motion is off. A new
@@ -259,9 +259,11 @@ InuFirstPerson.look = {
 		end
 		Look.setPoseCallback(callback)
 	end,
-	-- Where `player` (the local player if nil) looks as this client shows
-	-- it, in degrees relative to their character's facing: yaw (left
-	-- positive), then pitch (up positive). nil, nil while nothing is known.
+	-- Where the head of `player` (the local player if nil) turns as this
+	-- client shows it, in degrees relative to their character's facing: yaw
+	-- (left positive), then pitch (up positive). It is the look held to what
+	-- a neck can do, and straight ahead while the look is round behind the
+	-- body. nil, nil while nothing is known.
 	getAngles = function(player: Player?): (number?, number?)
 		if player ~= nil and (typeof(player) ~= "Instance" or not player:IsA("Player")) then
 			error("InuFirstPerson.look.getAngles takes a Player or nothing", 2)

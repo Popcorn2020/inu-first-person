@@ -1,25 +1,28 @@
 --!strict
 -- Where the characters look.
 --
--- In first person the local character turns with the view. While it stands,
--- walks, jumps or falls, this module turns Humanoid.AutoRotate off and sets
--- the root's facing right after the default camera, so the body and a held
--- Tool meet the view in the same frame; left to the Humanoid, the root turns
--- a frame late and swings past. Standing still, the feet keep their facing
--- until the view turns past look.turnThreshold (Turn). Seated, climbing,
--- swimming or in third person, the Humanoid turns the character as usual.
+-- In first person the local character turns with the view, the view first
+-- and the body after it on a spring (Turn), so a quick look to the side
+-- shows the head go first and the body come round behind it. While it
+-- stands, walks, jumps or falls, this module turns Humanoid.AutoRotate off
+-- and sets the root's facing right after the default camera, in the same
+-- frame as the camera; left to the Humanoid, the root turns a frame late and
+-- swings past in jerks. Seated, climbing, swimming or in third person, the
+-- Humanoid turns the character as usual.
 --
 -- On every character it shows, the neck, waist and right shoulder turn
--- toward where that player looks, on top of the animation (Joints). That is
--- done before physics, the last moment the Animator leaves alone, so a turn
--- shows from the next frame. The local player's look comes from the camera,
--- the others' from Sync.
+-- toward where that player looks, on top of the animation: LookPose shares
+-- the look out between them and Joints turns them. That is done before
+-- physics, the last moment the Animator leaves alone, so a turn shows from
+-- the next frame. The local player's look comes from the camera, the
+-- others' from Sync.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local Character = require(script.Parent.Character)
 local Joints = require(script.Parent.Joints)
+local LookPose = require(script.Parent.LookPose)
 local Math = require(script.Parent.Math)
 local Shared = require(script.Parent.Shared)
 local Sync = require(script.Parent.Sync)
@@ -50,9 +53,13 @@ type Entry = {
 	-- entry goes by its joints' character).
 	character: Model?,
 	joints: Joints.Set?,
-	-- The look shown, in radians relative to the root: yaw left, pitch up.
+	pose: LookPose.State,
+	-- The look, in radians relative to the root: yaw left, pitch up. The
+	-- others' ease toward what Sync last brought, at these speeds.
 	yaw: number,
 	pitch: number,
+	yawSpeed: number,
+	pitchSpeed: number,
 }
 
 local Look = {}
@@ -67,7 +74,11 @@ local turn = Turn.new()
 -- The Humanoid whose AutoRotate this module has turned off.
 local ownedHumanoid: Humanoid? = nil
 
-local own: Entry = { yaw = 0, pitch = 0 }
+local function newEntry(): Entry
+	return { pose = LookPose.new(), yaw = 0, pitch = 0, yawSpeed = 0, pitchSpeed = 0 }
+end
+
+local own = newEntry()
 -- 0..1: how much of the local look shows, easing with the camera's mode.
 local ownWeight = 0
 -- Where a held Tool aims, trailing the view: world yaw (unwrapped near the
@@ -79,6 +90,15 @@ local aimViewPitch = 0
 
 local others: { [Player]: Entry } = {}
 local poseCallback: PoseCallback? = nil
+
+-- The look settings in LookPose's units, refreshed each step.
+local poseSettings: LookPose.Settings = {
+	neckYawLimit = 0,
+	lookAwayAngle = 0,
+	headPitchShare = 0,
+	waistShare = 0,
+	waistLag = 0,
+}
 
 local function facesView(humanoid: Humanoid): boolean
 	return not humanoid.Sit
@@ -130,7 +150,7 @@ function Look.face(rig: Character.Rig?, firstPerson: boolean, dt: number)
 	local _, rootYaw = root.CFrame:ToEulerAnglesYXZ()
 	if ownedHumanoid == nil then
 		ownedHumanoid = humanoid
-		Turn.reset(turn, Math.shortestAngle(rootYaw - viewYaw), viewYaw)
+		Turn.reset(turn, rootYaw, viewYaw)
 	end
 	if humanoid.AutoRotate then
 		humanoid.AutoRotate = false
@@ -138,16 +158,14 @@ function Look.face(rig: Character.Rig?, firstPerson: boolean, dt: number)
 
 	local follow = humanoid.MoveDirection.Magnitude > MOVING_INPUT
 		or rig.character:FindFirstChildOfClass("Tool") ~= nil
-	local twist = Turn.step(
+	local yaw = Turn.step(
 		turn,
 		viewYaw,
-		follow,
-		math.rad(settings.turnThreshold),
-		math.rad(settings.neckYawLimit),
-		settings.turnTime,
+		if follow then 0 else math.rad(settings.standTwist),
+		settings.turnFrequency,
+		settings.turnDamping,
 		dt
 	)
-	local yaw = viewYaw + twist
 	if math.abs(Math.shortestAngle(yaw - rootYaw)) > FACING_EPSILON then
 		root.CFrame = CFrame.new(root.Position) * CFrame.Angles(0, yaw, 0)
 	end
@@ -163,12 +181,14 @@ local function relativeTo(rootCFrame: CFrame, yaw: number, pitch: number): (numb
 	return math.atan2(-look.X, -look.Z), math.asin(math.clamp(look.Y, -1, 1))
 end
 
--- Takes the look off the character's joints, keeping them for next time.
+-- Takes the look off the character's joints, keeping them for next time,
+-- and starts the pose over from the front.
 local function unturn(entry: Entry)
 	local set = entry.joints
 	if set then
 		Joints.releaseAll(set)
 	end
+	LookPose.reset(entry.pose)
 end
 
 local function forget(entry: Entry)
@@ -187,9 +207,9 @@ local function jointsFor(entry: Entry, character: Model, root: BasePart): Joints
 	return found
 end
 
--- Turns a character's joints: the waist takes its share of the look and the
--- neck the rest, and with `aiming` the right arm points at the aim.
--- `ownView` keeps the waist from bending forward or back.
+-- Turns a character's joints to its look, through LookPose, and with
+-- `aiming` points the right arm at the aim. `ownView` keeps the waist from
+-- bending forward or back; `scale` fades the whole pose.
 local function pose(
 	entry: Entry,
 	character: Model,
@@ -197,24 +217,31 @@ local function pose(
 	aiming: boolean,
 	aimRelativeYaw: number,
 	aimRelativePitch: number,
-	ownView: boolean
+	ownView: boolean,
+	scale: number,
+	dt: number
 )
 	local set = jointsFor(entry, character, root)
 	local waist, neck, shoulder = set.waist, set.neck, set.shoulder
-	local settings = Shared.config.look
-	local share = if waist then settings.waistShare else 0
-	local headPitch = entry.pitch * settings.headPitchShare
-	local waistYaw = entry.yaw * share
-	local waistPitch = if ownView then 0 else headPitch * share
+	local state = entry.pose
+	local hasWaist = waist ~= nil
+	LookPose.step(state, entry.yaw, entry.pitch, poseSettings, hasWaist, ownView, scale, dt)
 	if waist then
-		Joints.turn(waist, waistYaw, waistPitch)
+		Joints.turn(waist, state.waistYaw, state.waistPitch)
 	end
 	if neck then
-		Joints.turn(neck, entry.yaw - waistYaw, headPitch - waistPitch)
+		Joints.turn(neck, state.neckYaw, state.neckPitch)
 	end
 	if shoulder then
 		if aiming then
-			Joints.turn(shoulder, aimRelativeYaw - waistYaw, aimRelativePitch - waistPitch)
+			-- The arm aims where the head does, letting go with it.
+			local reach = LookPose.getReach(poseSettings, hasWaist)
+			local weight = state.weight * scale
+			Joints.turn(
+				shoulder,
+				math.clamp(aimRelativeYaw, -reach, reach) * weight - state.waistYaw,
+				aimRelativePitch * weight - state.waistPitch
+			)
 		else
 			Joints.release(shoulder)
 		end
@@ -264,7 +291,7 @@ local function stepAim(dt: number)
 	aimViewYaw, aimViewPitch = wrapped, viewPitch
 end
 
-local function stepOwn(dt: number, on: boolean, limit: number)
+local function stepOwn(dt: number, on: boolean)
 	local rig = Character.get()
 	local wanted = if on and Shared.viewOnCharacter then 1 else 0
 	ownWeight = Math.approach(ownWeight, wanted, Shared.config.camera.transitionTime, dt)
@@ -278,37 +305,61 @@ local function stepOwn(dt: number, on: boolean, limit: number)
 		return
 	end
 	local rootCFrame = rig.root.CFrame
-	local yaw, pitch = relativeTo(rootCFrame, Shared.viewYaw, Shared.viewPitch)
-	own.yaw = math.clamp(yaw, -limit, limit) * ownWeight
-	own.pitch = pitch * ownWeight
+	own.yaw, own.pitch = relativeTo(rootCFrame, Shared.viewYaw, Shared.viewPitch)
 	local aimRelativeYaw, aimRelativePitch = relativeTo(rootCFrame, aimYaw, aimPitch)
 	pose(
 		own,
 		rig.character,
 		rig.root,
 		isAiming(rig.character),
-		math.clamp(aimRelativeYaw, -limit, limit) * ownWeight,
-		aimRelativePitch * ownWeight,
-		Shared.firstPerson
+		aimRelativeYaw,
+		aimRelativePitch,
+		Shared.firstPerson,
+		ownWeight,
+		dt
 	)
 	afterPose(own, rig.character, player)
 end
 
-local function stepOthers(dt: number, on: boolean, limit: number)
+-- Eases an entry's look toward the latest from Sync on a critically damped
+-- spring, so the updates, a few a second, show as one smooth turn. The yaw
+-- takes the short way round, as the look crosses behind the body.
+local function easeLook(entry: Entry, targetYaw: number, targetPitch: number, dt: number)
+	local smoothTime = Shared.config.sync.smoothTime
+	if smoothTime <= 0 then
+		entry.yaw, entry.pitch = targetYaw, targetPitch
+		entry.yawSpeed, entry.pitchSpeed = 0, 0
+		return
+	end
+	-- A critically damped spring at this frequency is about smoothTime late.
+	local frequency = 1 / (math.pi * smoothTime)
+	local goal = entry.yaw + Math.shortestAngle(targetYaw - entry.yaw)
+	local yaw, yawSpeed = Math.spring(entry.yaw, entry.yawSpeed, goal, frequency, 1, dt)
+	entry.yaw = Math.shortestAngle(yaw)
+	entry.yawSpeed = yawSpeed
+	entry.pitch, entry.pitchSpeed =
+		Math.spring(entry.pitch, entry.pitchSpeed, targetPitch, frequency, 1, dt)
+end
+
+local function isShowing(entry: Entry): boolean
+	local state = entry.pose
+	return math.abs(entry.yaw) > LOOK_EPSILON
+		or math.abs(entry.pitch) > LOOK_EPSILON
+		or math.abs(state.waistYaw) > LOOK_EPSILON
+		or math.abs(state.waistPitch) > LOOK_EPSILON
+end
+
+local function stepOthers(dt: number, on: boolean)
 	local camera = workspace.CurrentCamera
 	local cameraPosition = if camera then camera.CFrame.Position else nil
-	local smoothTime = Shared.config.sync.smoothTime
 	local looks = Sync.getLooks()
 	for other, look in looks do
 		local entry = others[other]
 		if not entry then
-			entry = { yaw = 0, pitch = 0 }
+			entry = newEntry()
 			others[other] = entry
 		end
-		local targetYaw = if on then math.clamp(look.yaw, -limit, limit) else 0
-		local targetPitch = if on then look.pitch else 0
-		entry.yaw = Math.approach(entry.yaw, targetYaw, smoothTime, dt)
-		entry.pitch = Math.approach(entry.pitch, targetPitch, smoothTime, dt)
+		easeLook(entry, if on then look.yaw else 0, if on then look.pitch else 0, dt)
 
 		local character = other.Character
 		if entry.character ~= character then
@@ -319,9 +370,8 @@ local function stepOthers(dt: number, on: boolean, limit: number)
 		local root = if humanoid then humanoid.RootPart else nil
 		local near = root ~= nil
 			and (not cameraPosition or (root.Position - cameraPosition).Magnitude < LOOK_DISTANCE)
-		local showing = math.abs(entry.yaw) > LOOK_EPSILON or math.abs(entry.pitch) > LOOK_EPSILON
-		if character and root and near and showing then
-			pose(entry, character, root, isAiming(character), entry.yaw, entry.pitch, false)
+		if character and root and near and isShowing(entry) then
+			pose(entry, character, root, isAiming(character), entry.yaw, entry.pitch, false, 1, dt)
 			afterPose(entry, character, other)
 		else
 			unturn(entry)
@@ -341,11 +391,17 @@ local function step(rawDt: number)
 	local dt = math.min(rawDt, MAX_DT)
 	local settings = Shared.config.look
 	local on = enabled and settings.enabled
-	local limit = math.rad(settings.neckYawLimit)
+	poseSettings.neckYawLimit = math.rad(settings.neckYawLimit)
+	poseSettings.lookAwayAngle = math.rad(settings.lookAwayAngle)
+	poseSettings.headPitchShare = settings.headPitchShare
+	poseSettings.waistShare = settings.waistShare
+	poseSettings.waistLag = settings.waistLag
 
-	stepOwn(dt, on, limit)
-	Sync.offer(own.yaw, own.pitch, dt)
-	stepOthers(dt, on, limit)
+	stepOwn(dt, on)
+	-- The look as it is, fading with first person; each client shares it out
+	-- on its own side, letting the head go the same way.
+	Sync.offer(own.yaw * ownWeight, own.pitch * ownWeight, dt)
+	stepOthers(dt, on)
 
 	if Shared.measuring then
 		Shared.spentTime += os.clock() - started
@@ -410,14 +466,14 @@ function Look.isEnabled(): boolean
 	return enabled
 end
 
--- The look shown for `target` (the local player if nil), in degrees
+-- Where the head of `target` (the local player if nil) turns, in degrees
 -- relative to their character's facing, or nil while none is known.
 function Look.getAngles(target: Player?): (number?, number?)
 	local entry = if target == nil or target == player then own else others[target]
 	if not entry then
 		return nil, nil
 	end
-	return math.deg(entry.yaw), math.deg(entry.pitch)
+	return math.deg(entry.pose.headYaw), math.deg(entry.pose.headPitch)
 end
 
 return Look

@@ -47,6 +47,12 @@ local DEFAULTS = {
 		-- view.
 		eyeHeight = 0.6,
 		eyeForward = 0.3,
+		-- Looking down, the eye also moves this much further forward by
+		-- straight down (less on the way), as someone leans over to see their
+		-- feet. A Roblox torso is much deeper than a person's chest, and
+		-- without it the chest fills the bottom of the view from just under
+		-- the eye. Not while climbing, with a ladder right in front.
+		lookDownLean = 0.3,
 	},
 
 	-- The head's rise and fall and side to side sway while walking.
@@ -153,29 +159,23 @@ local DEFAULTS = {
 		responseTime = 0.2,
 	},
 
-	-- InuFirstPerson.camera.kick: a quick snap with a slow settle under it,
-	-- and a fine shake that dies away.
+	-- InuFirstPerson.camera.kick: the view is thrown out and wobbles back to
+	-- rest on one spring, like a jelly set shaking, with a fine shake on top.
 	kick = {
-		-- The snap: a stiff spring that throws the view out and swings back a
-		-- little past rest. Cycles per second, and damping (1 settles without
-		-- overshoot, lower swings past more).
-		frequency = 6,
-		damping = 0.45,
-		-- Share of each kick carried instead by a slow spring that eases the
-		-- view back after the snap, the tail of the kick.
-		settleShare = 0.35,
-		settleFrequency = 1.4,
-		settleDamping = 1,
-		-- How much each kick shakes the view: at 1, a kick of 10 degrees shakes
-		-- it fully. 0 turns the shake off.
+		-- How fast the view wobbles, in cycles per second, and how quickly the
+		-- wobble dies: the damping ratio. At 0.3 each swing past rest is about
+		-- a third of the one before, so two or three swings show; lower rings
+		-- longer, 1 eases back without swinging past at all.
+		frequency = 3.5,
+		damping = 0.3,
+		-- How much each kick shakes the view: at 1, a kick of about 6 degrees
+		-- shakes it fully. The shake fades with the wobble, ending a little
+		-- before it. 0 turns it off.
 		shake = 1,
 		-- The shake at full, in degrees: X pitch, Y yaw, Z roll.
 		shakeDegrees = Vector3.new(0.45, 0.45, 0.7),
 		-- Cycles per second of the shake's noise.
 		shakeFrequency = 16,
-		-- A full shake dies away in 1 / shakeDecay seconds. It fades as the
-		-- square of what is left, so the end is soft.
-		shakeDecay = 1.2,
 		-- Each kick's yaw and roll vary by up to this share of its size, so
 		-- repeated kicks differ. Changing the seed changes how.
 		variation = 0.3,
@@ -194,17 +194,25 @@ local DEFAULTS = {
 	-- character turns with the view.
 	look = {
 		enabled = true,
-		-- Standing still in first person, the feet stay put until the view
-		-- turns this far from them; then the body swings round to the view.
-		turnThreshold = 50,
-		-- How long the body takes to swing round to the view, standing or on
-		-- starting to move. Moving or holding a Tool, it then turns with the
-		-- view exactly, so the body and the tool never trail the camera.
-		turnTime = 0.12,
-		-- The head turns at most this far from the body. Past it, a standing
-		-- body is pulled round; a seated or climbing one stays and the head
-		-- stops.
-		neckYawLimit = 70,
+		-- In first person the view turns first and the body follows it on a
+		-- spring, lagging a quick turn and swinging a little past: cycles per
+		-- second, and the damping ratio (1 follows without swinging past,
+		-- lower swings past more).
+		turnFrequency = 2.25,
+		turnDamping = 0.6,
+		-- Standing still, the feet may stay put while the view turns up to this
+		-- far either side of the body, the turn beyond it dragging the body
+		-- round. At 0 the body follows the view standing too, a little behind
+		-- it. Moving or holding a Tool, the body always follows the view.
+		standTwist = 0,
+		-- The neck turns at most this far. With a waist (R15), the upper body
+		-- adds its share, so the head as a whole reaches further (this divided
+		-- by 1 - waistShare).
+		neckYawLimit = 75,
+		-- A look further round from the body than this, or than the head
+		-- reaches, lets the head go back to the front, since no head could
+		-- follow it; it takes the look up again 20 degrees inside.
+		lookAwayAngle = 100,
 		-- Share of the view's tilt up and down that the head takes; the eyes
 		-- take the rest, as people's do. The first-person eye moves with the
 		-- head, so this also sets how far it swings out when looking down.
@@ -214,6 +222,9 @@ local DEFAULTS = {
 		-- never bends the waist forward or back, which would push the chest
 		-- into the eye; the others see it.
 		waistShare = 0.3,
+		-- The waist takes its share this long after the head, so a quick look
+		-- turns the head, then the chest, then the body.
+		waistLag = 0.08,
 		-- While a Tool is held, the right arm aims it where the player looks.
 		toolAim = true,
 		-- The arm trails the view by about this long, so the tool swings a
@@ -230,7 +241,9 @@ local DEFAULTS = {
 		-- At most this many updates a second, only while the angles change. The
 		-- server takes up to 30.
 		sendRate = 12,
-		-- How quickly another player's head follows their updates.
+		-- About how long another player's head takes to catch up with an
+		-- update. It eases in and out of each, so a slow turn arriving a few
+		-- times a second shows as one smooth turn, not steps.
 		smoothTime = 0.1,
 	},
 
@@ -336,8 +349,9 @@ local SIGNED_SETTINGS: { [string]: true } = {
 }
 -- Numbers with an upper bound.
 local MAXIMUMS: { [string]: number } = {
-	["kick.settleShare"] = 1,
+	["look.standTwist"] = 180,
 	["look.neckYawLimit"] = 180,
+	["look.lookAwayAngle"] = 180,
 	["look.headPitchShare"] = 1,
 	["look.waistShare"] = 1,
 	["sync.sendRate"] = SyncProtocol.MAX_SEND_RATE,

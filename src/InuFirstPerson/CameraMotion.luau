@@ -16,7 +16,9 @@ local BOB_STOPPED_SCALE = 1e-3
 -- The noise time wraps at this period to keep math.noise precise. The jump at
 -- the wrap is far below what the eye can see at the sway's sizes.
 local NOISE_TIME_WRAP = 4096
--- A kick of this many degrees adds a full shake at kick.shake 1.
+-- A kick swinging this many degrees shakes fully at kick.shake 1. The swing
+-- is measured as if undamped, about 1.5 times what a kick of 0.3 damping
+-- actually reaches.
 local FULL_SHAKE_DEGREES = 10
 
 -- What Camera reads off the character each frame. The table is reused.
@@ -89,19 +91,12 @@ export type State = {
 	wasGrounded: boolean,
 	stepOffset: number,
 	sprintFov: number,
-	-- The kick's two springs, the snap and the settle, for rotation (radians)
-	-- and position, with their velocities.
-	snapRotation: Vector3,
-	snapRotationVelocity: Vector3,
-	snapPosition: Vector3,
-	snapPositionVelocity: Vector3,
-	settleRotation: Vector3,
-	settleRotationVelocity: Vector3,
-	settlePosition: Vector3,
-	settlePositionVelocity: Vector3,
-	-- 0..1: how much the kicks shake the view; it falls at kick.shakeDecay a
-	-- second.
-	trauma: number,
+	-- The kick's spring, for rotation (radians) and position, with their
+	-- velocities.
+	kickRotation: Vector3,
+	kickRotationVelocity: Vector3,
+	kickPosition: Vector3,
+	kickPositionVelocity: Vector3,
 	-- Kicks so far, which picks each kick's variation.
 	kickCount: number,
 
@@ -181,15 +176,10 @@ function CameraMotion.reset(state: State)
 	state.wasGrounded = false
 	state.stepOffset = 0
 	state.sprintFov = 0
-	state.snapRotation = Vector3.zero
-	state.snapRotationVelocity = Vector3.zero
-	state.snapPosition = Vector3.zero
-	state.snapPositionVelocity = Vector3.zero
-	state.settleRotation = Vector3.zero
-	state.settleRotationVelocity = Vector3.zero
-	state.settlePosition = Vector3.zero
-	state.settlePositionVelocity = Vector3.zero
-	state.trauma = 0
+	state.kickRotation = Vector3.zero
+	state.kickRotationVelocity = Vector3.zero
+	state.kickPosition = Vector3.zero
+	state.kickPositionVelocity = Vector3.zero
 	state.kickCount = 0
 	state.localPosition = Vector3.zero
 	state.localRotation = Vector3.zero
@@ -216,9 +206,9 @@ local function variationOf(seed: number, count: number, channel: number): number
 end
 
 -- Starts a kick that swings out to about `rotationDegrees` (X pitch up, Y
--- yaw left, Z roll left) and `position` (camera space) and springs back. The
--- snap carries most of it out and back quickly, a little past rest, the
--- settle eases the rest back slowly, and the view shakes for a moment.
+-- yaw left, Z roll left) and `position` (camera space) and wobbles back to
+-- rest on one spring, each swing smaller than the last by the same share,
+-- with a fine shake that dies away with the wobble.
 function CameraMotion.kick(
 	state: State,
 	settings: Config.Config,
@@ -237,14 +227,31 @@ function CameraMotion.kick(
 		)
 	local rotation = Vector3.new(math.rad(varied.X), math.rad(varied.Y), math.rad(varied.Z))
 
-	local settleShare = kick.settleShare
-	local snap = Math.springKickVelocity(1 - settleShare, kick.frequency, kick.damping)
-	local settle = Math.springKickVelocity(settleShare, kick.settleFrequency, kick.settleDamping)
-	state.snapRotationVelocity += rotation * snap
-	state.snapPositionVelocity += position * snap
-	state.settleRotationVelocity += rotation * settle
-	state.settlePositionVelocity += position * settle
-	state.trauma = math.min(state.trauma + kick.shake * size / FULL_SHAKE_DEGREES, 1)
+	local impulse = Math.springKickVelocity(1, kick.frequency, kick.damping)
+	state.kickRotationVelocity += rotation * impulse
+	state.kickPositionVelocity += position * impulse
+end
+
+-- How far a spring's swing reaches from rest now, wherever in the swing it
+-- is: it falls off smoothly as the wobble dies, with no dips where the
+-- swing turns. Radians, over the three axes.
+local function swingSize(
+	position: Vector3,
+	velocity: Vector3,
+	frequency: number,
+	damping: number
+): number
+	local omega = 2 * math.pi * frequency
+	if omega <= 0 then
+		return position.Magnitude
+	end
+	if damping >= 1 then
+		-- No swing: where it is and how far its speed still carries it.
+		return (position + velocity / omega).Magnitude
+	end
+	local damped = omega * math.sqrt(1 - damping * damping)
+	local lead = (velocity + position * damping * omega) / damped
+	return math.sqrt(position:Dot(position) + lead:Dot(lead))
 end
 
 local function lerp(from: number, to: number, alpha: number): number
@@ -487,51 +494,38 @@ function CameraMotion.step(state: State, settings: Config.Config, input: Input, 
 	state.fovTarget = fovTarget
 
 	local kick = settings.kick
-	state.snapRotation, state.snapRotationVelocity = stepSpring3(
-		state.snapRotation,
-		state.snapRotationVelocity,
+	state.kickRotation, state.kickRotationVelocity = stepSpring3(
+		state.kickRotation,
+		state.kickRotationVelocity,
 		kick.frequency,
 		kick.damping,
 		dt
 	)
-	state.snapPosition, state.snapPositionVelocity = stepSpring3(
-		state.snapPosition,
-		state.snapPositionVelocity,
+	state.kickPosition, state.kickPositionVelocity = stepSpring3(
+		state.kickPosition,
+		state.kickPositionVelocity,
 		kick.frequency,
 		kick.damping,
 		dt
 	)
-	state.settleRotation, state.settleRotationVelocity = stepSpring3(
-		state.settleRotation,
-		state.settleRotationVelocity,
-		kick.settleFrequency,
-		kick.settleDamping,
-		dt
-	)
-	state.settlePosition, state.settlePositionVelocity = stepSpring3(
-		state.settlePosition,
-		state.settlePositionVelocity,
-		kick.settleFrequency,
-		kick.settleDamping,
-		dt
-	)
-	-- Trauma falls at a steady rate and the shake goes as its square
-	-- (Eiserloh, GDC 2016), on noise of the time, so it fades the same at any
-	-- frame rate.
-	state.trauma = math.max(state.trauma - kick.shakeDecay * dt, 0)
+	-- The shake rides on the wobble: it goes as the square of the swing's
+	-- size (as Eiserloh's camera shake goes as the square of trauma, GDC
+	-- 2016), so it ends before the wobble does rather than outlasting it.
+	local kickRotation = state.kickRotation
+	local kickPosition = state.kickPosition
 	local shakeRotation = Vector3.zero
-	if state.trauma > 0 then
+	local swing = math.deg(
+		swingSize(kickRotation, state.kickRotationVelocity, kick.frequency, kick.damping)
+	)
+	local strength = math.min(kick.shake * swing / FULL_SHAKE_DEGREES, 1) ^ 2
+	if strength > 0 then
 		local x = state.time * kick.shakeFrequency
 		local function sample(channel: number): number
 			return math.clamp(math.noise(x, kick.seed * 1000 + channel * 23.71) * 2, -1, 1)
 		end
-		local degrees = Vector3.new(sample(1), sample(2), sample(3))
-			* kick.shakeDegrees
-			* state.trauma ^ 2
+		local degrees = Vector3.new(sample(1), sample(2), sample(3)) * kick.shakeDegrees * strength
 		shakeRotation = Vector3.new(math.rad(degrees.X), math.rad(degrees.Y), math.rad(degrees.Z))
 	end
-	local kickRotation = state.snapRotation + state.settleRotation
-	local kickPosition = state.snapPosition + state.settlePosition
 
 	local bob = settings.bob
 	local phase = state.bobPhase
