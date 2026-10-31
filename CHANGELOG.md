@@ -2,6 +2,16 @@
 
 What each version of InuFirstPerson changed. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/): a major version for changes a game has to adapt to (a setting or function renamed or removed, a behavior that changes by itself), a minor one for additions, a patch for fixes. Changed defaults are listed under Changed, since games that keep the defaults will feel them.
 
+## [3.0.1] - 2026-10-31
+
+### Changed
+
+- In first person the module also owns the character's facing while it climbs or swims, turning it with the view as it does while walking.
+
+### Fixed
+
+- In first person a ladder or truss no longer spins the character round and throws it off. Handed AutoRotate back while climbing, the Humanoid turned the character to face away from the eye, which sits in front of it; looking up far enough, the eye was behind it, which is why climbing worked then.
+
 ## [3.0.0] - 2026-10-31
 
 ### Changed

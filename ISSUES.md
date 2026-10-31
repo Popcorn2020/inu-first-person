@@ -5,7 +5,7 @@ Known problems with InuFirstPerson, what has not been tried, and ideas. Each ite
 ## Known problems
 
 - The look turns the joints before physics, so heads, waists and the Tool arm follow the view one frame late. The Tool's aim trails by that frame on top of `look.toolAimLag`.
-- Seated or climbing, the body does not turn, and turning the view past what the head reaches keeps turning the eye about the neck, so looking right behind puts the eye behind the neck. The head is hidden, so it shows only as a view from a little further back.
+- Seated, the body does not turn, and turning the view past what the head reaches keeps turning the eye about the neck, so looking right behind puts the eye behind the neck. The head is hidden, so it shows only as a view from a little further back.
 - `stamina.jumpCost` takes stamina for each jump but does not stop a jump when there is not enough.
 - A platform moved by setting its CFrame lifts the character without a velocity, so the view trails it by up to `stepSmoothing.maxOffset` until it stops. Platforms moved by physics are followed as they are.
 - With a toggle mode, turning from one move key to another (W released a frame before D is pressed) stops sprinting for that frame, so `sprintChanged` fires twice.

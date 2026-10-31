@@ -4,11 +4,11 @@
 -- In first person the local character turns with the view, the view first
 -- and the body after it on a spring (Turn), so a quick look to the side
 -- shows the head go first and the body come round behind it. While it
--- stands, walks, jumps or falls, this module turns Humanoid.AutoRotate off
--- and sets the root's facing right after the default camera, in the same
--- frame as the camera; left to the Humanoid, the root turns a frame late and
--- swings past in jerks. Seated, climbing, swimming or in third person, the
--- Humanoid turns the character as usual.
+-- stands, walks, jumps, falls, climbs or swims, this module turns
+-- Humanoid.AutoRotate off and sets the root's facing right after the default
+-- camera, in the same frame as the camera; left to the Humanoid, the root
+-- turns a frame late and swings past in jerks. Seated or in third person,
+-- the Humanoid turns the character as usual.
 --
 -- On every character it shows, the neck, waist and right shoulder turn
 -- toward where that player looks, on top of the animation: LookPose shares
@@ -32,12 +32,18 @@ local MAX_DT = 0.1
 -- Below this MoveDirection length the character counts as standing.
 local MOVING_INPUT = 0.1
 -- Humanoid states in which the character turns with the view in first person.
+-- Climbing and swimming are kept here, not handed back: given AutoRotate in
+-- first person, the Humanoid faces the character along the line from the
+-- camera to it, and the eye sits in front of the character, so it would turn
+-- the character round, off the ladder, and back again each time it took it.
 local FACING_STATES: { [Enum.HumanoidStateType]: true } = {
 	[Enum.HumanoidStateType.Running] = true,
 	[Enum.HumanoidStateType.RunningNoPhysics] = true,
 	[Enum.HumanoidStateType.Jumping] = true,
 	[Enum.HumanoidStateType.Freefall] = true,
 	[Enum.HumanoidStateType.Landed] = true,
+	[Enum.HumanoidStateType.Climbing] = true,
+	[Enum.HumanoidStateType.Swimming] = true,
 }
 -- Characters farther than this from the camera keep their animation as is.
 local LOOK_DISTANCE = 150
