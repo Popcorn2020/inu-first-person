@@ -2,6 +2,8 @@
 
 A first-person base for any Roblox experience. Put `InuFirstPerson.rbxm` in ReplicatedStorage, call `start()` from a client script, and the player gets a camera at the eye that moves like a head, their own body, a character that turns with the view, and sprinting with stamina, on R15 and R6 alike and the same at 60 and 240 frames per second. Add the server half, `InuFirstPersonServer.rbxm`, and players also see where the others look. A game tunes it with settings and drives it through the API; it does not edit the module.
 
+Try it on Roblox in [ifp-demo](https://www.roblox.com/games/110392116771182/ifp-demo), open to players aged 16 and over who have done Roblox's age check. It is the demo place in `dist/InuFirstPersonDemo.rbxl`.
+
 ## What it does
 
 - Camera motion: a walking and sprinting bob, a lean into sideways movement, a hand-held sway, breathing that gets heavy when stamina runs low, a dip on landing that grows with the fall, smooth climbing of steps, a wider field of view while sprinting, and kicks that throw the view out and wobble back to rest on one spring, with a fine shake that fades with the wobble. It works on top of Roblox's default camera, so mouse, touch and gamepad look and their sensitivity stay as Roblox makes them.
