@@ -141,6 +141,7 @@ new(
 	{ Name = "DemoSettings", Source = readScript("DemoSettings.luau") },
 	replicatedStorage
 )
+new("ModuleScript", { Name = "DemoKick", Source = readScript("DemoKick.luau") }, replicatedStorage)
 
 -- Scripts.
 local playerScripts = new("StarterPlayerScripts", {}, starterPlayer)
@@ -281,7 +282,7 @@ label(
 	panel,
 	"Help",
 	4,
-	"Shift, L3 or RUN: sprint\nMouse wheel or pinch: third person\nF: kick the camera\nHold Alt: a cursor for the buttons and sliders\nThe tool in the backpack shows the arm holding it",
+	"Shift, L3 or RUN: sprint\nMouse wheel or pinch: third person\nF, or using the Tool: kick the camera\nHold Alt: a cursor for the buttons and sliders\nThe Tool in the backpack shows the arm holding it",
 	13,
 	Enum.FontWeight.Regular,
 	MUTED
@@ -589,9 +590,11 @@ new(
 	panelGui
 )
 
--- A tool, to see the arm that holds it.
-local tool = new("Tool", { Name = "Stick", CanBeDropped = false }, starterPack)
+-- A tool, to see the arm that holds it. Using it kicks the camera, as F does,
+-- so a touch screen can kick too.
+local tool = new("Tool", { Name = "Tool", CanBeDropped = false }, starterPack)
 block(tool, "Handle", Vector3.new(0.4, 0.4, 2.4), CFrame.new(), ACCENT).Anchored = false
+new("LocalScript", { Name = "KickScript", Source = readScript("DemoTool.client.luau") }, tool)
 
 -- The course. The spawn faces -Z; stairs and slopes rise away from it.
 local course = new("Folder", { Name = "Course" }, workspace)

@@ -10,7 +10,7 @@ local UserInputService = game:GetService("UserInputService")
 -- The demo place is built by tools/build-demo.luau, so its Instances are not
 -- on disk for the type checker; each is narrowed where it is taken.
 local module = ReplicatedStorage:FindFirstChild("InuFirstPerson") :: ModuleScript
-local InuFirstPerson = require(module)
+local kick = require(ReplicatedStorage:FindFirstChild("DemoKick") :: ModuleScript)
 
 local STATS_PERIOD = 0.5
 
@@ -19,7 +19,6 @@ local left = (script.Parent :: Instance):FindFirstChild("Left") :: Frame
 local panel = left:FindFirstChild("Panel") :: Frame
 local stats = panel:FindFirstChild("Stats") :: TextLabel
 local rigs = panel:FindFirstChild("Rigs") :: Frame
-local random = Random.new()
 
 for _, name in { "R15", "R6" } do
 	local button = rigs:FindFirstChild(name)
@@ -52,11 +51,7 @@ RunService.Heartbeat:Connect(function(dt)
 end)
 
 UserInputService.InputBegan:Connect(function(input, processed)
-	if processed or input.KeyCode ~= Enum.KeyCode.F or not InuFirstPerson.isRunning() then
-		return
+	if not processed and input.KeyCode == Enum.KeyCode.F then
+		kick()
 	end
-	InuFirstPerson.camera.kick(
-		Vector3.new(4.6, random:NextNumber(-1.725, 1.725), random:NextNumber(-1.15, 1.15)),
-		Vector3.new(0, 0, 0.23)
-	)
 end)
