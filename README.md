@@ -194,4 +194,4 @@ Tools: Rojo 7.7.1, Lune 0.11.0, luau-lsp 1.70.1, StyLua 2.5.2, selene 0.30.1.
 
 ## License
 
-MIT. Copyright (c) 2026 inu (@inutataaaaa). See `LICENSE`.
+MIT. Copyright (c) 2026 inu (@inutataaaaa). See `LICENSE`. The same notice is at the top of `InuFirstPerson` and `InuFirstPersonServer`, so it goes with the rbxms; keep it there in a game's copy.

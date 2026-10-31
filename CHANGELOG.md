@@ -2,6 +2,12 @@
 
 What each version of InuFirstPerson changed. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/): a major version for changes a game has to adapt to (a setting or function renamed or removed, a behavior that changes by itself), a minor one for additions and retuned defaults, a patch for fixes. Changed defaults are listed under Changed, since games that keep the defaults will feel them.
 
+## [3.1.1] - 2026-10-31
+
+### Fixed
+
+- The MIT license notice is at the top of `InuFirstPerson` and `InuFirstPersonServer`, so it goes with the rbxms into a game. Before, it was only in the repository's `LICENSE`.
+
 ## [3.1.0] - 2026-10-31
 
 ### Changed
