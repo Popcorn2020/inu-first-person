@@ -194,4 +194,4 @@ Tools: Rojo 7.7.1, Lune 0.11.0, luau-lsp 1.70.1, StyLua 2.5.2, selene 0.30.1.
 
 ## License
 
-Copyright (c) 2026 inu (@inutataaaaa). All rights reserved. See `LICENSE`.
+MIT. Copyright (c) 2026 inu (@inutataaaaa). See `LICENSE`.
