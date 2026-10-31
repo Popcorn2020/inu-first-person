@@ -9,6 +9,9 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local LIFT_HEIGHTS = { 0, 16 }
 local LIFT_WAIT = 5
+-- A rebuild loads the avatar's assets, so on a public server a player gets
+-- at most one this often, however fast the remote is fired.
+local REBUILD_COOLDOWN = 1
 
 local RIG_TYPES: { [string]: Enum.HumanoidRigType } = {
 	R15 = Enum.HumanoidRigType.R15,
@@ -27,6 +30,7 @@ local base = lift:FindFirstChild("Base") :: BasePart
 local prismatic = base:FindFirstChild("Prismatic") :: PrismaticConstraint
 
 local rebuilding: { [Player]: true } = {}
+local lastRebuild: { [Player]: number } = {}
 
 local function rebuild(player: Player, rigType: Enum.HumanoidRigType)
 	local character = player.Character
@@ -59,16 +63,20 @@ end
 
 rigRemote.OnServerEvent:Connect(function(player, name)
 	local rigType = if typeof(name) == "string" then RIG_TYPES[name] else nil
-	if not rigType or rebuilding[player] then
+	local now = os.clock()
+	local last = lastRebuild[player]
+	if not rigType or rebuilding[player] or (last and now - last < REBUILD_COOLDOWN) then
 		return
 	end
 	rebuilding[player] = true
+	lastRebuild[player] = now
 	rebuild(player, rigType)
 	rebuilding[player] = nil
 end)
 
 Players.PlayerRemoving:Connect(function(player)
 	rebuilding[player] = nil
+	lastRebuild[player] = nil
 end)
 
 task.spawn(function()
