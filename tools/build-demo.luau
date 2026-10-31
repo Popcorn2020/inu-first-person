@@ -136,6 +136,11 @@ assert(
 )
 server[1].Parent = serverScriptService
 new("RemoteEvent", { Name = "DemoRig" }, replicatedStorage)
+new(
+	"ModuleScript",
+	{ Name = "DemoSettings", Source = readScript("DemoSettings.luau") },
+	replicatedStorage
+)
 
 -- Scripts.
 local playerScripts = new("StarterPlayerScripts", {}, starterPlayer)

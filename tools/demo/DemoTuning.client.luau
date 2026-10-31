@@ -1,16 +1,23 @@
 --!strict
 -- The setting sliders: each changes one setting through
--- InuFirstPerson.configure while the demo runs, with the setting's default in
+-- InuFirstPerson.configure while the demo runs, with the module's default in
 -- the middle, or at the low end for a row with a High attribute (a default at
--- the setting's floor). Reset puts every one back. Holding Left Alt shows a cursor in
--- first person, where the mouse is otherwise locked to the middle.
+-- the setting's floor). Each starts where the demo starts the setting
+-- (DemoSettings), and Reset puts every one back to the module's default.
+-- Holding Left Alt shows a cursor in first person, where the mouse is
+-- otherwise locked to the middle.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 
 -- The demo place is built by tools/build-demo.luau, so its Instances are not
 -- on disk for the type checker; each is narrowed where it is taken.
-local InuFirstPerson = require(ReplicatedStorage:FindFirstChild("InuFirstPerson") :: ModuleScript)
+local module = ReplicatedStorage:FindFirstChild("InuFirstPerson") :: ModuleScript
+local InuFirstPerson = require(module)
+-- The module's own defaults: getConfig() returns the demo's settings once
+-- the demo has started, and it may start before or after this script.
+local moduleDefaults = require(module:FindFirstChild("Config") :: ModuleScript).defaults
+local demoSettings = require(ReplicatedStorage:FindFirstChild("DemoSettings") :: ModuleScript)
 local gui = script.Parent :: ScreenGui
 local form = require(gui:FindFirstChild("DemoForm") :: ModuleScript)
 local left = gui:FindFirstChild("Left") :: Frame
@@ -56,12 +63,19 @@ local cursorKeyHeld = false
 local open = not form.touch
 
 local function readDefault(group: string, key: string): number
-	local groupSettings = InuFirstPerson.getConfig()[group]
+	local groupSettings = moduleDefaults[group]
 	local value = if typeof(groupSettings) == "table" then groupSettings[key] else nil
 	if typeof(value) ~= "number" then
 		error(`Demo: InuFirstPerson has no number setting {group}.{key}`)
 	end
 	return value
+end
+
+-- Where the demo starts the setting: its DemoSettings value, or the default.
+local function readStart(group: string, key: string, default: number): number
+	local groupSettings = demoSettings[group]
+	local value = if typeof(groupSettings) == "table" then groupSettings[key] else nil
+	return if typeof(value) == "number" then value else default
 end
 
 -- Where `value` sits along the track, 0..1.
@@ -155,6 +169,10 @@ local function addSlider(row: Frame)
 	if default < low or default >= high or (givenHigh == nil and default == low) then
 		error(`Demo: {group}.{key} defaults to {default}, outside its slider's {low} to {high}`)
 	end
+	local start = readStart(group, key, default)
+	if start < low or start > high then
+		error(`Demo: {group}.{key} starts at {start}, outside its slider's {low} to {high}`)
+	end
 	local track = row:FindFirstChild("Track") :: GuiButton
 	local slider: Slider = {
 		group = group,
@@ -163,7 +181,7 @@ local function addSlider(row: Frame)
 		low = low,
 		high = high,
 		decimals = math.max(0, math.ceil(-math.log10((high - low) / STEPS) - 1e-9)),
-		value = default,
+		value = start,
 		track = track,
 		fill = track:FindFirstChild("Fill") :: Frame,
 		knob = track:FindFirstChild("Knob") :: Frame,
