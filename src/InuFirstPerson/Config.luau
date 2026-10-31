@@ -41,11 +41,11 @@ local DEFAULTS = {
 		vrScale = 0,
 		-- Where the eye sits in first person: this far above the neck joint and
 		-- this far in front of it, for a standard avatar (both scale with it).
-		-- Looking ahead, that is about where the default camera puts the eye.
-		-- The eye turns about the neck with the head (look.headPitchShare), so
-		-- looking down it moves out over the chest and the body below is in
+		-- Looking ahead, that is higher than where the default camera puts the
+		-- eye. The eye turns about the neck with the head (look.headPitchShare),
+		-- so looking down it moves out over the chest and the body below is in
 		-- view.
-		eyeHeight = 0.6,
+		eyeHeight = 1.05,
 		eyeForward = 0.3,
 		-- Looking down, the eye also moves this much further forward by
 		-- straight down (less on the way), as someone leans over to see their
@@ -67,9 +67,9 @@ local DEFAULTS = {
 		-- quickening them, as people do; 1 only quickens them.
 		cadencePower = 0.5,
 		-- X sways left and right once per cycle; Y dips once per step.
-		amplitude = Vector3.new(0.035, 0.07, 0),
+		amplitude = Vector3.new(0.04025, 0.0805, 0),
 		-- Roll at the side of each sway.
-		rollDegrees = 0.2,
+		rollDegrees = 0.23,
 		-- Size multiplier at full sprinting speed.
 		sprintScale = 1.7,
 		-- Size multiplier while climbing, where the climbing speed drives the bob.
@@ -81,7 +81,7 @@ local DEFAULTS = {
 	-- The view leans into sideways movement.
 	strafeTilt = {
 		-- Roll at full sideways input.
-		degrees = 1,
+		degrees = 1.15,
 		responseTime = 0.2,
 	},
 
@@ -93,14 +93,14 @@ local DEFAULTS = {
 		drift = {
 			-- Cycles per second of the noise.
 			frequency = 0.4,
-			position = Vector3.new(0.01, 0.01, 0.01),
+			position = Vector3.new(0.0115, 0.0115, 0.0115),
 			-- X pitch, Y yaw, Z roll.
-			rotationDegrees = Vector3.new(0.16, 0.16, 0.2),
+			rotationDegrees = Vector3.new(0.184, 0.184, 0.23),
 		},
 		jitter = {
 			frequency = 0.85,
-			position = Vector3.new(0.006, 0.006, 0.006),
-			rotationDegrees = Vector3.new(0.05, 0.05, 0.05),
+			position = Vector3.new(0.0069, 0.0069, 0.0069),
+			rotationDegrees = Vector3.new(0.0575, 0.0575, 0.0575),
 		},
 		-- Multiplier on the sway when stamina is empty; it fades back to 1 as
 		-- stamina refills.
@@ -113,11 +113,11 @@ local DEFAULTS = {
 		rate = 0.25,
 		tiredRate = 0.85,
 		-- Pitch nod of each breath at rest and with empty stamina.
-		pitchDegrees = 0.05,
-		tiredPitchDegrees = 0.5,
+		pitchDegrees = 0.0575,
+		tiredPitchDegrees = 0.575,
 		-- Rise of each breath at rest and with empty stamina.
-		height = 0.004,
-		tiredHeight = 0.03,
+		height = 0.0046,
+		tiredHeight = 0.0345,
 		-- How quickly the breathing follows the stamina as it drains and refills.
 		responseTime = 0.6,
 	},
@@ -129,8 +129,8 @@ local DEFAULTS = {
 		minSpeed = 10,
 		maxSpeed = 100,
 		-- The dip at maxSpeed: how far the view drops and how far it nods down.
-		drop = 0.5,
-		pitchDegrees = 3,
+		drop = 0.575,
+		pitchDegrees = 3.45,
 		-- The spring that carries the dip: cycles per second, and damping (1
 		-- settles without overshoot, lower bounces a little).
 		frequency = 2.2,
@@ -155,7 +155,7 @@ local DEFAULTS = {
 	-- The field of view widens a little while sprinting.
 	sprintFov = {
 		-- Degrees added at full sprinting speed.
-		degrees = 5,
+		degrees = 7,
 		responseTime = 0.2,
 	},
 

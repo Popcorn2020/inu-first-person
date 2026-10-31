@@ -56,7 +56,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		return
 	end
 	InuFirstPerson.camera.kick(
-		Vector3.new(4, random:NextNumber(-1.5, 1.5), random:NextNumber(-1, 1)),
-		Vector3.new(0, 0, 0.2)
+		Vector3.new(4.6, random:NextNumber(-1.725, 1.725), random:NextNumber(-1.15, 1.15)),
+		Vector3.new(0, 0, 0.23)
 	)
 end)

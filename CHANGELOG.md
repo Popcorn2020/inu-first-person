@@ -1,6 +1,14 @@
 # Changelog
 
-What each version of InuFirstPerson changed. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/): a major version for changes a game has to adapt to (a setting or function renamed or removed, a behavior that changes by itself), a minor one for additions, a patch for fixes. Changed defaults are listed under Changed, since games that keep the defaults will feel them.
+What each version of InuFirstPerson changed. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/): a major version for changes a game has to adapt to (a setting or function renamed or removed, a behavior that changes by itself), a minor one for additions and retuned defaults, a patch for fixes. Changed defaults are listed under Changed, since games that keep the defaults will feel them.
+
+## [3.1.0] - 2026-10-31
+
+### Changed
+
+- The walking motion is 1.15 times as big by default, with `camera.motionScale` still 1: the bob (`bob.amplitude`, `bob.rollDegrees`), the lean into sideways movement (`strafeTilt.degrees`), the sway (`sway.drift`, `sway.jitter`), the breathing (`breathing.pitchDegrees`, `breathing.tiredPitchDegrees`, `breathing.height`, `breathing.tiredHeight`) and the landing dip (`landing.drop`, `landing.pitchDegrees`). Kicks keep the size the game gives them. The old values are these divided by 1.15.
+- Sprinting widens the field of view by 7 degrees (`sprintFov.degrees`, was 5).
+- The first-person eye sits higher: `camera.eyeHeight` is 1.05 (was 0.6).
 
 ## [3.0.2] - 2026-10-31
 
