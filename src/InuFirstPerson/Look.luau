@@ -7,8 +7,10 @@
 -- stands, walks, jumps, falls, climbs or swims, this module turns
 -- Humanoid.AutoRotate off and sets the root's facing right after the default
 -- camera, in the same frame as the camera; left to the Humanoid, the root
--- turns a frame late and swings past in jerks. Seated or in third person,
--- the Humanoid turns the character as usual.
+-- turns a frame late and swings past in jerks. On a ladder it keeps the body
+-- as it took hold, facing the ladder, and only the head and chest turn to
+-- look round. Seated or in third person, the Humanoid turns the character as
+-- usual.
 --
 -- On every character it shows, the neck, waist and right shoulder turn
 -- toward where that player looks, on top of the animation: LookPose shares
@@ -31,8 +33,8 @@ local Turn = require(script.Parent.Turn)
 local MAX_DT = 0.1
 -- Below this MoveDirection length the character counts as standing.
 local MOVING_INPUT = 0.1
--- Humanoid states in which the character turns with the view in first person.
--- Climbing and swimming are kept here, not handed back: given AutoRotate in
+-- Humanoid states in which this module owns the character's facing in first
+-- person. Climbing and swimming are kept here, not handed back: given AutoRotate in
 -- first person, the Humanoid faces the character along the line from the
 -- camera to it, and the eye sits in front of the character, so it would turn
 -- the character round, off the ladder, and back again each time it took it.
@@ -162,18 +164,25 @@ function Look.face(rig: Character.Rig?, firstPerson: boolean, dt: number)
 		humanoid.AutoRotate = false
 	end
 
-	local follow = humanoid.MoveDirection.Magnitude > MOVING_INPUT
-		or rig.character:FindFirstChildOfClass("Tool") ~= nil
-	local yaw = Turn.step(
-		turn,
-		viewYaw,
-		if follow then 0 else math.rad(settings.standTwist),
-		settings.turnFrequency,
-		settings.turnDamping,
-		dt
-	)
-	if math.abs(Math.shortestAngle(yaw - rootYaw)) > FACING_EPSILON then
-		root.CFrame = CFrame.new(root.Position) * CFrame.Angles(0, yaw, 0)
+	if humanoid:GetState() == Enum.HumanoidStateType.Climbing then
+		-- The Humanoid holds on to the ladder it finds in front of the body, so
+		-- a body turned with the view would let go of it on a look to the side.
+		-- The body stays, and the turn starts from it once the climb ends.
+		Turn.reset(turn, rootYaw, viewYaw)
+	else
+		local follow = humanoid.MoveDirection.Magnitude > MOVING_INPUT
+			or rig.character:FindFirstChildOfClass("Tool") ~= nil
+		local yaw = Turn.step(
+			turn,
+			viewYaw,
+			if follow then 0 else math.rad(settings.standTwist),
+			settings.turnFrequency,
+			settings.turnDamping,
+			dt
+		)
+		if math.abs(Math.shortestAngle(yaw - rootYaw)) > FACING_EPSILON then
+			root.CFrame = CFrame.new(root.Position) * CFrame.Angles(0, yaw, 0)
+		end
 	end
 	local spin = root.AssemblyAngularVelocity
 	if spin.Y ~= 0 then

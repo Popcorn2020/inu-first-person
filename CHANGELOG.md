@@ -2,6 +2,12 @@
 
 What each version of InuFirstPerson changed. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/): a major version for changes a game has to adapt to (a setting or function renamed or removed, a behavior that changes by itself), a minor one for additions, a patch for fixes. Changed defaults are listed under Changed, since games that keep the defaults will feel them.
 
+## [3.0.2] - 2026-10-31
+
+### Changed
+
+- In first person, on a ladder or truss the body stays facing it as it took hold, and a look to the side or behind turns only the head and chest, as the neck and waist do anywhere else. The view still turns freely. Turned with the view, the body faced away from the ladder the Humanoid holds on to in front of it, and a look to the side let go of it. Once the climb ends, the body follows the view again on its spring.
+
 ## [3.0.1] - 2026-10-31
 
 ### Changed
